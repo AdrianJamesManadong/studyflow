@@ -2,24 +2,27 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-const navItems = [
-  { label: 'Dashboard', icon: '⊞', path: '/dashboard' },
-  { label: 'Subjects', icon: '📚', path: '/dashboard/subjects' },
-  { label: 'Assignments', icon: '📝', path: '/dashboard/assignments' },
-  { label: 'Grades', icon: '📊', path: '/dashboard/grades' },
-  { label: 'Notes', icon: '🗒️', path: '/dashboard/notes' },
-  { label: 'Calendar', icon: '📅', path: '/dashboard/calendar' },
-  { label: 'Pomodoro', icon: '⏱️', path: '/dashboard/pomodoro' },
-  { label: 'AI Assistant', icon: '🤖', path: '/dashboard/ai' },
-  { label: 'Profile', icon: '👤', path: '/dashboard/profile' },
-  { label: 'About', icon: '✨', path: '/dashboard/about' },
-]
+const ADMIN_EMAIL = 'adrianjames082506@gmail.com'
 
 export default function Sidebar() {
   const { pathname } = useLocation()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+
+  const navItems = [
+    { label: 'Dashboard', icon: '⊞', path: '/dashboard' },
+    { label: 'Subjects', icon: '📚', path: '/dashboard/subjects' },
+    { label: 'Assignments', icon: '📝', path: '/dashboard/assignments' },
+    { label: 'Grades', icon: '📊', path: '/dashboard/grades' },
+    { label: 'Notes', icon: '🗒️', path: '/dashboard/notes' },
+    { label: 'Calendar', icon: '📅', path: '/dashboard/calendar' },
+    { label: 'Pomodoro', icon: '⏱️', path: '/dashboard/pomodoro' },
+    { label: 'AI Assistant', icon: '🤖', path: '/dashboard/ai' },
+    { label: 'About', icon: '✨', path: '/dashboard/about' },
+    { label: 'Profile', icon: '👤', path: '/dashboard/profile' },
+    ...(user?.email === ADMIN_EMAIL ? [{ label: 'Admin', icon: '🛡️', path: '/dashboard/admin' }] : []),
+  ]
 
   function handleLogout() {
     logout()
@@ -38,7 +41,6 @@ export default function Sidebar() {
           <h1 className="text-xl font-bold text-white">StudyFlow</h1>
           <p className="text-xs text-gray-500 mt-0.5">Hey, {user?.name?.split(' ')[0]} 👋</p>
         </div>
-        {/* Close button - mobile only */}
         <button
           onClick={() => setOpen(false)}
           className="lg:hidden text-gray-500 hover:text-white transition"
@@ -92,7 +94,6 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile hamburger button */}
       <button
         onClick={() => setOpen(true)}
         className="lg:hidden fixed top-4 left-4 z-50 w-10 h-10 bg-gray-900 border border-gray-800 rounded-lg flex items-center justify-center text-gray-400 hover:text-white transition"
@@ -100,7 +101,6 @@ export default function Sidebar() {
         ☰
       </button>
 
-      {/* Mobile overlay */}
       {open && (
         <div
           className="lg:hidden fixed inset-0 bg-black/60 z-40"
@@ -108,13 +108,11 @@ export default function Sidebar() {
         />
       )}
 
-      {/* Mobile drawer */}
       <aside className={`lg:hidden fixed top-0 left-0 h-full w-64 bg-gray-900 border-r border-gray-800 z-50 transform transition-transform duration-300
         ${open ? 'translate-x-0' : '-translate-x-full'}`}>
         {sidebarContent}
       </aside>
 
-      {/* Desktop sidebar - always visible */}
       <aside className="hidden lg:flex lg:flex-col w-64 min-h-screen bg-gray-900 border-r border-gray-800">
         {sidebarContent}
       </aside>

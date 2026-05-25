@@ -13,6 +13,7 @@ import Pomodoro from './pages/Pomodoro'
 import AIAssistant from './pages/AIAssistant'
 import Profile from './pages/Profile'
 import About from './pages/About'
+import Admin from './pages/Admin'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="ai" element={<AIAssistant />} />
           <Route path="profile" element={<Profile />} />
           <Route path="about" element={<About />} />
+          <Route path="admin" element={<Admin />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import GuideModal from '../components/GuideModal'
 
 export default function Login() {
   const { register, handleSubmit, formState: { errors } } = useForm()
@@ -9,6 +10,7 @@ export default function Login() {
   const navigate = useNavigate()
   const [serverError, setServerError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [showGuide, setShowGuide] = useState(false)
 
   async function onSubmit(data) {
     try {
@@ -28,6 +30,12 @@ export default function Login() {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white">StudyFlow</h1>
           <p className="text-gray-400 mt-2">Welcome back. Let's get to work.</p>
+          <button
+            onClick={() => setShowGuide(true)}
+            className="mt-3 text-xs text-indigo-400 hover:text-indigo-300 border border-indigo-500/30 hover:border-indigo-500/60 px-4 py-1.5 rounded-full transition"
+          >
+            ✨ How does StudyFlow work?
+          </button>
         </div>
 
         {/* Card */}
@@ -96,8 +104,10 @@ export default function Login() {
             </Link>
           </p>
         </div>
-
       </div>
+
+      {/* How it works modal */}
+      {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
     </div>
   )
 }

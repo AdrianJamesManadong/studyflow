@@ -4,8 +4,9 @@ import { useSubjects } from '../hooks/useSubjects'
 import { useAssignments } from '../hooks/useAssignments'
 import { useNotes } from '../hooks/useNotes'
 import { useGrades } from '../hooks/useGrades'
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { DashboardSkeleton } from '../components/Skeleton'
+import { supabase } from '../utils/supabase'
 
 export default function DashboardHome() {
   const { user } = useAuth()
@@ -15,6 +16,17 @@ export default function DashboardHome() {
   const { notes, loading: notesLoading } = useNotes()
   const { getOverallAverage, getLetterGrade, loading: gradesLoading } = useGrades()
   const isLoading = subjectsLoading || assignmentsLoading || notesLoading || gradesLoading
+
+  const [announcements, setAnnouncements] = useState([])
+
+  useEffect(() => {
+    supabase
+      .from('announcements')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(3)
+      .then(({ data }) => { if (data) setAnnouncements(data) })
+  }, [])
 
   const today = useMemo(() => new Date(), [])
   const todayStr = today.toDateString()
@@ -96,6 +108,13 @@ export default function DashboardHome() {
     return { label: `${diff}d left`, color: 'text-gray-500' }
   }
 
+  const annConfig = {
+    info:    { icon: 'ti-server',         dotColor: 'bg-blue-400',    topBg: 'bg-blue-500/10',    fromColor: 'text-blue-400',    iconColor: 'text-blue-400'    },
+    warning: { icon: 'ti-alert-triangle', dotColor: 'bg-amber-400',   topBg: 'bg-amber-500/10',   fromColor: 'text-amber-400',   iconColor: 'text-amber-400'   },
+    success: { icon: 'ti-circle-check',   dotColor: 'bg-emerald-400', topBg: 'bg-emerald-500/10', fromColor: 'text-emerald-400', iconColor: 'text-emerald-400' },
+    danger:  { icon: 'ti-alert-circle',   dotColor: 'bg-red-400',     topBg: 'bg-red-500/10',     fromColor: 'text-red-400',     iconColor: 'text-red-400'     },
+  }
+
   const firstName = user?.user_metadata?.name?.split(' ')[0]
     || user?.email?.split('@')[0]
     || 'Student'
@@ -113,7 +132,6 @@ export default function DashboardHome() {
           </h2>
           <p className="text-gray-400 mt-1">Here's what's going on with your studies.</p>
         </div>
-
         {overdueAssignments.length > 0 && (
           <button
             onClick={() => navigate('/dashboard/assignments')}
@@ -123,6 +141,40 @@ export default function DashboardHome() {
           </button>
         )}
       </div>
+
+      {/* Announcements */}
+      {announcements.length > 0 && (
+        <div className="space-y-2.5">
+          {announcements.map(a => {
+            const cfg = annConfig[a.type] ?? annConfig.info
+            const ts = new Date(a.created_at).toLocaleDateString('en-US', {
+              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+            })
+            return (
+              <div key={a.id} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                {/* Top bar */}
+                <div className={`flex items-center gap-2 px-3.5 py-2 border-b border-gray-800 ${cfg.topBg}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dotColor}`} />
+                  <i className={`ti ti-shield-check text-xs ${cfg.fromColor}`} />
+                  <span className={`text-[11px] font-medium uppercase tracking-wide ${cfg.fromColor}`}>
+                    System · Admin
+                  </span>
+                  <span className="flex-1" />
+                  <span className="text-[11px] text-gray-600">{ts}</span>
+                </div>
+                {/* Body */}
+                <div className="flex gap-3 items-start px-3.5 py-3">
+                  <i className={`ti ${cfg.icon} text-lg flex-shrink-0 mt-0.5 ${cfg.iconColor}`} />
+                  <div>
+                    <p className="text-sm font-medium text-white mb-0.5">{a.title}</p>
+                    <p className="text-xs text-gray-400 leading-relaxed">{a.message}</p>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -209,7 +261,6 @@ export default function DashboardHome() {
                       </p>
                     </div>
                   </div>
-
                   <div className="flex items-center gap-3">
                     <span className={`text-xs font-medium ${daysColor}`}>{daysLabel}</span>
                     <span className={`text-xs px-2 py-1 rounded-full capitalize

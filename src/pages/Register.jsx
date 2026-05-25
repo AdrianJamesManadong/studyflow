@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import GuideModal from '../components/GuideModal'
 
 export default function Register() {
   const { register, handleSubmit, watch, formState: { errors } } = useForm()
@@ -10,6 +11,7 @@ export default function Register() {
   const [serverError, setServerError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
+  const [showGuide, setShowGuide] = useState(false)
 
   const passwordValue = watch('password', '')
   const confirmValue = watch('confirmPassword', '')
@@ -33,6 +35,12 @@ export default function Register() {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white">StudyFlow</h1>
           <p className="text-gray-400 mt-2">Create your account and start studying smarter.</p>
+          <button
+            onClick={() => setShowGuide(true)}
+            className="mt-3 text-xs text-indigo-400 hover:text-indigo-300 border border-indigo-500/30 hover:border-indigo-500/60 px-4 py-1.5 rounded-full transition"
+          >
+            ✨ How does StudyFlow work?
+          </button>
         </div>
 
         {/* Card */}
@@ -181,6 +189,9 @@ export default function Register() {
         </div>
 
       </div>
+
+      {/* How it works modal */}
+      {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
     </div>
   )
 }
