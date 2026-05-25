@@ -8,13 +8,15 @@ export function useEvents() {
     fetchEvents()
   }, [])
 
-  async function fetchEvents() {
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .order('date', { ascending: true })
-    if (!error) setEvents(data || [])
-  }
+ async function fetchEvents() {
+  const { data: { user } } = await supabase.auth.getUser() // 👈 add this
+  const { data, error } = await supabase
+    .from('events')
+    .select('*')
+    .eq('user_id', user.id)                                // 👈 add this
+    .order('date', { ascending: true })
+  if (!error) setEvents(data || [])
+}
 
   async function addEvent(data) {
     const { data: { user } } = await supabase.auth.getUser()

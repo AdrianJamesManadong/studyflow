@@ -10,14 +10,16 @@ export function useGrades() {
   }, [])
 
   async function fetchGrades() {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('grades')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (!error) setGrades(data || [])
-    setLoading(false)
-  }
+  setLoading(true)
+  const { data: { user } } = await supabase.auth.getUser() // 👈 add this
+  const { data, error } = await supabase
+    .from('grades')
+    .select('*')
+    .eq('user_id', user.id)                                // 👈 add this
+    .order('created_at', { ascending: false })
+  if (!error) setGrades(data || [])
+  setLoading(false)
+}
 
   async function addGrade(data) {
     const { data: { user } } = await supabase.auth.getUser()

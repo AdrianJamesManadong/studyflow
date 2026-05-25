@@ -21,15 +21,17 @@ export function useSubjects() {
     fetchSubjects()
   }, [])
 
-  async function fetchSubjects() {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('subjects')
-      .select('*')
-      .order('created_at', { ascending: true })
-    if (!error) setSubjects(data || [])
-    setLoading(false)
-  }
+ async function fetchSubjects() {
+  setLoading(true)
+  const { data: { user } } = await supabase.auth.getUser() // 👈 add this
+  const { data, error } = await supabase
+    .from('subjects')
+    .select('*')
+    .eq('user_id', user.id)                                // 👈 add this
+    .order('created_at', { ascending: true })
+  if (!error) setSubjects(data || [])
+  setLoading(false)
+}
 
   async function addSubject(name, colorName) {
   const color = COLORS.find(c => c.name === colorName) || COLORS[0]

@@ -9,15 +9,17 @@ export function useNotes() {
     fetchNotes()
   }, [])
 
-  async function fetchNotes() {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-      .order('updated_at', { ascending: false })
-    if (!error) setNotes(data || [])
-    setLoading(false)
-  }
+async function fetchNotes() {
+  setLoading(true)
+  const { data: { user } } = await supabase.auth.getUser() // 👈 add this
+  const { data, error } = await supabase
+    .from('notes')
+    .select('*')
+    .eq('user_id', user.id)                                // 👈 add this
+    .order('updated_at', { ascending: false })
+  if (!error) setNotes(data || [])
+  setLoading(false)
+}
 
   async function addNote(data) {
     const { data: { user } } = await supabase.auth.getUser()

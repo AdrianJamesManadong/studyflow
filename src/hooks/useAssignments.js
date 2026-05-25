@@ -17,22 +17,25 @@ export function useAssignments() {
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState(null)
 
-  const fetchAssignments = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { data, error } = await supabase
-        .from('assignments')
-        .select('*')
-        .order('due_date', { ascending: true })
-      if (error) throw error
-      setAssignments(data ?? [])
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+const fetchAssignments = useCallback(async () => {
+  setLoading(true)
+  setError(null)
+  try {
+    const { data: { session } } = await supabase.auth.getSession() // 👈 add this
+    if (!session) throw new Error('Not authenticated')             // 👈 add this
+    const { data, error } = await supabase
+      .from('assignments')
+      .select('*')
+      .eq('user_id', session.user.id)                             // 👈 add this
+      .order('due_date', { ascending: true })
+    if (error) throw error
+    setAssignments(data ?? [])
+  } catch (err) {
+    setError(err.message)
+  } finally {
+    setLoading(false)
+  }
+}, [])
 
   useEffect(() => {
     fetchAssignments()

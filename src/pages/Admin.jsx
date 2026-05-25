@@ -105,16 +105,29 @@ export default function Admin() {
     setAnnLoading(true)
 
     if (editingAnn) {
-      const { error } = await supabase
+      const editingId = editingAnn.id
+      const { data, error } = await supabase
         .from('announcements')
         .update({ title: annForm.title, message: annForm.message, type: annForm.type })
-        .eq('id', editingAnn.id)
+        .eq('id', editingId)
+        .select()
+
+      console.log('update result:', data, error)
+
       if (!error) {
+        // Optimistically update local state immediately
+        setAnnouncements(prev => prev.map(a =>
+          a.id === editingId
+            ? { ...a, title: annForm.title, message: annForm.message, type: annForm.type }
+            : a
+        ))
         setAnnSuccess(true)
         setEditingAnn(null)
         setAnnForm({ title: '', message: '', type: 'info' })
         fetchAnnouncements()
         setTimeout(() => setAnnSuccess(false), 3000)
+      } else {
+        console.error('Failed to update announcement:', error.message)
       }
     } else {
       const { error } = await supabase.from('announcements').insert({
@@ -128,6 +141,8 @@ export default function Admin() {
         setAnnForm({ title: '', message: '', type: 'info' })
         fetchAnnouncements()
         setTimeout(() => setAnnSuccess(false), 3000)
+      } else {
+        console.error('Failed to post announcement:', error.message)
       }
     }
     setAnnLoading(false)
@@ -161,14 +176,11 @@ export default function Admin() {
     return `${Math.floor(hrs / 24)}d ago`
   }
 
-  // Extracts a hex/rgb color string or falls back to a solid indigo dot
   function getSubjectColor(colorField) {
     if (!colorField) return null
-    // If it's a string like "#4f46e5" or "rgb(...)" use it directly
     if (typeof colorField === 'string' && (colorField.startsWith('#') || colorField.startsWith('rgb'))) {
       return colorField
     }
-    // If it's an object like { bg: 'bg-indigo-500', hex: '#4f46e5' }
     if (typeof colorField === 'object') {
       if (colorField.hex) return colorField.hex
       if (colorField.color) return colorField.color
