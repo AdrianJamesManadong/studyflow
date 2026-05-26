@@ -4,7 +4,7 @@ import { useAssignments } from '../hooks/useAssignments'
 import { SubjectsSkeleton } from '../components/Skeleton'
 
 export default function Subjects() {
-  const { subjects, addSubject, editSubject, deleteSubject, COLORS } = useSubjects()
+  const { subjects, addSubject, editSubject, deleteSubject, COLORS, loading } = useSubjects()
   const { assignments } = useAssignments()
 
   const [showModal, setShowModal] = useState(false)
@@ -84,7 +84,7 @@ export default function Subjects() {
       await deleteSubject(confirmDelete.id)
       setConfirmDelete(null)
     } catch (err) {
-      // surface error if needed
+      setError(err.message || 'Failed to delete subject. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -96,6 +96,9 @@ export default function Subjects() {
 
   const pendingCount = (subjectId) =>
     assignments.filter(a => a.subject_id === subjectId && a.status !== 'done').length
+
+  // Fix: actually use the imported SubjectsSkeleton while loading
+  if (loading) return <SubjectsSkeleton />
 
   return (
     <div className="space-y-6">

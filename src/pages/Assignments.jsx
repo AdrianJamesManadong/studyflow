@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAssignments } from '../hooks/useAssignments'
 import { useSubjects } from '../hooks/useSubjects'
 import { AssignmentsSkeleton } from '../components/Skeleton'
@@ -6,9 +6,9 @@ import { AssignmentsSkeleton } from '../components/Skeleton'
 const PRIORITIES = ['low', 'medium', 'high']
 
 const priorityStyles = {
-  low: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  low:    'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
   medium: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  high: 'bg-red-500/10 text-red-400 border-red-500/20',
+  high:   'bg-red-500/10 text-red-400 border-red-500/20',
 }
 
 function formatTime(time) {
@@ -20,54 +20,103 @@ function formatTime(time) {
   return `${display}:${m} ${ampm}`
 }
 
+// Fix: compare against start of day, not current time
 function isOverdue(dueDate, status) {
   if (status === 'done') return false
-  return new Date(dueDate) < new Date()
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return new Date(dueDate) < today
 }
 
+const EMPTY_FORM = { title: '', subjectId: '', dueDate: '', dueTime: '', priority: 'medium', notes: '' }
+
 export default function Assignments() {
-  const { assignments, addAssignment, editAssignment, deleteAssignment, toggleStatus } = useAssignments()
-  const { subjects } = useSubjects()
-  const [showModal, setShowModal] = useState(false)
-  const [editing, setEditing] = useState(null)
-  const [filter, setFilter] = useState('all')
+  // Fix: destructure loading from useAssignments
+  const { assignments, addAssignment, editAssignment, deleteAssignment, toggleStatus, loading: assignmentsLoading } = useAssignments()
+  const { subjects, loading: subjectsLoading } = useSubjects()
+
+  const [showModal, setShowModal]       = useState(false)
+  const [editing, setEditing]           = useState(null)
+  const [filter, setFilter]             = useState('all')
   const [confirmDelete, setConfirmDelete] = useState(null)
-  const [form, setForm] = useState({ title: '', subjectId: '', dueDate: '', dueTime: '', priority: 'medium', notes: '' })
+  const [form, setForm]                 = useState(EMPTY_FORM)
+  const [saving, setSaving]             = useState(false)   // Fix: track in-flight saves
+  const [deleting, setDeleting]         = useState(false)   // Fix: track in-flight deletes
+  const [error, setError]               = useState('')      // Fix: surface errors in UI
+
+  // Fix: Escape key closes both modals — consistent with Subjects.jsx
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== 'Escape') return
+      setShowModal(false)
+      setConfirmDelete(null)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   function openAdd() {
     setEditing(null)
-    setForm({ title: '', subjectId: '', dueDate: '', dueTime: '', priority: 'medium', notes: '' })
+    setForm(EMPTY_FORM)
+    setError('')
     setShowModal(true)
   }
 
   function openEdit(a) {
     setEditing(a)
     setForm({
-      title: a.title,
+      title:     a.title,
       subjectId: a.subject_id || '',
-      dueDate: a.due_date,
-      dueTime: a.due_time || '',
-      priority: a.priority,
-      notes: a.notes || ''
+      dueDate:   a.due_date,
+      dueTime:   a.due_time || '',
+      priority:  a.priority,
+      notes:     a.notes || '',
     })
+    setError('')
     setShowModal(true)
   }
 
-  function handleSave() {
+  // Fix: async, awaited, with saving state + error handling
+  async function handleSave() {
     if (!form.title.trim() || !form.dueDate) return
-    if (editing) {
-      editAssignment(editing.id, { ...form, status: editing.status })
-    } else {
-      addAssignment({ ...form, status: 'pending' })
+    setSaving(true)
+    setError('')
+    try {
+      if (editing) {
+        await editAssignment(editing.id, { ...form, status: editing.status })
+      } else {
+        await addAssignment({ ...form, status: 'pending' })
+      }
+      setShowModal(false)
+    } catch (err) {
+      setError(err.message || 'Something went wrong. Please try again.')
+    } finally {
+      setSaving(false)
     }
-    setShowModal(false)
+  }
+
+  // Fix: async, awaited, with deleting state + error handling
+  async function handleDelete() {
+    setDeleting(true)
+    setError('')
+    try {
+      await deleteAssignment(confirmDelete.id)
+      setConfirmDelete(null)
+    } catch (err) {
+      setError(err.message || 'Failed to delete assignment. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const filtered = assignments.filter(a => {
     if (filter === 'pending') return a.status !== 'done'
-    if (filter === 'done') return a.status === 'done'
+    if (filter === 'done')    return a.status === 'done'
     return true
   }).sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
+
+  // Fix: actually use the imported skeleton while loading
+  if (assignmentsLoading || subjectsLoading) return <AssignmentsSkeleton />
 
   return (
     <div className="space-y-6">
@@ -76,7 +125,9 @@ export default function Assignments() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-white">Assignments</h2>
-          <p className="text-gray-400 text-sm mt-1">{assignments.filter(a => a.status !== 'done').length} pending</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {assignments.filter(a => a.status !== 'done').length} pending
+          </p>
         </div>
         <button
           onClick={openAdd}
@@ -144,7 +195,8 @@ export default function Assignments() {
                     {a.priority}
                   </span>
                   <span className={`text-xs ${overdue ? 'text-red-400' : 'text-gray-500'}`}>
-                    {overdue ? '⚠ Overdue · ' : ''}Due {new Date(a.due_date).toLocaleDateString()}
+                    {overdue ? '⚠ Overdue · ' : ''}
+                    Due {new Date(a.due_date).toLocaleDateString()}
                     {a.due_time && ` · ${formatTime(a.due_time)}`}
                   </span>
                 </div>
@@ -152,7 +204,7 @@ export default function Assignments() {
               </div>
 
               <div className="flex gap-2 flex-shrink-0">
-                <button onClick={() => openEdit(a)} className="text-gray-500 hover:text-white text-xs transition">Edit</button>
+                <button onClick={() => openEdit(a)}         className="text-gray-500 hover:text-white text-xs transition">Edit</button>
                 <button onClick={() => setConfirmDelete(a)} className="text-gray-500 hover:text-red-400 text-xs transition">Delete</button>
               </div>
             </div>
@@ -162,9 +214,15 @@ export default function Assignments() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        // Fix: backdrop click closes modal
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+          onClick={(e) => e.target === e.currentTarget && setShowModal(false)}
+        >
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-md space-y-4">
-            <h3 className="text-white font-semibold text-lg">{editing ? 'Edit Assignment' : 'Add Assignment'}</h3>
+            <h3 className="text-white font-semibold text-lg">
+              {editing ? 'Edit Assignment' : 'Add Assignment'}
+            </h3>
 
             <div>
               <label className="block text-sm text-gray-400 mb-1">Title</label>
@@ -172,6 +230,7 @@ export default function Assignments() {
                 autoFocus
                 value={form.title}
                 onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && handleSave()}
                 placeholder="e.g. Chapter 5 Report"
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition"
               />
@@ -232,16 +291,26 @@ export default function Assignments() {
               />
             </div>
 
+            {/* Fix: show error in modal */}
+            {error && (
+              <p className="text-red-400 text-xs">{error}</p>
+            )}
+
             <div className="flex gap-3 pt-1">
-              <button onClick={() => setShowModal(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition">
+              <button
+                onClick={() => setShowModal(false)}
+                disabled={saving}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition disabled:opacity-40"
+              >
                 Cancel
               </button>
+              {/* Fix: disabled while saving, shows saving state */}
               <button
                 onClick={handleSave}
-                disabled={!form.title.trim() || !form.dueDate}
+                disabled={!form.title.trim() || !form.dueDate || saving}
                 className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg py-2 text-sm transition"
               >
-                {editing ? 'Save Changes' : 'Add Assignment'}
+                {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Assignment'}
               </button>
             </div>
           </div>
@@ -250,30 +319,36 @@ export default function Assignments() {
 
       {/* Confirm Delete Modal */}
       {confirmDelete && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        // Fix: backdrop click closes modal
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+          onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}
+        >
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
             <div className="text-center">
               <p className="text-3xl mb-3">🗑️</p>
               <h3 className="text-white font-semibold text-lg">Delete Assignment?</h3>
               <p className="text-gray-400 text-sm mt-1">
-                Are you sure you want to delete <span className="text-white font-medium">"{confirmDelete.title}"</span>? This cannot be undone.
+                Are you sure you want to delete{' '}
+                <span className="text-white font-medium">"{confirmDelete.title}"</span>? This cannot be undone.
               </p>
+              {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition"
+                disabled={deleting}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition disabled:opacity-40"
               >
                 Cancel
               </button>
+              {/* Fix: awaited with deleting state */}
               <button
-                onClick={() => {
-                  deleteAssignment(confirmDelete.id)
-                  setConfirmDelete(null)
-                }}
-                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-2 text-sm transition"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-2 text-sm transition disabled:opacity-40"
               >
-                Yes, Delete
+                {deleting ? 'Deleting…' : 'Yes, Delete'}
               </button>
             </div>
           </div>
