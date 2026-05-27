@@ -14,6 +14,7 @@ import AIAssistant from './pages/AIAssistant'
 import Profile from './pages/Profile'
 import About from './pages/About'
 import Admin from './pages/Admin'
+import ResetPassword from './pages/ResetPassword'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -33,13 +34,14 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <Dashboard />
           </ProtectedRoute>
         }>
           <Route index element={<DashboardHome />} />
-         <Route path="subjects" element={<Subjects />} />
+          <Route path="subjects" element={<Subjects />} />
           <Route path="assignments" element={<Assignments />} />
           <Route path="grades" element={<Grades />} />
           <Route path="notes" element={<Notes />} />
@@ -54,4 +56,4 @@ export default function App() {
       </Routes>
     </BrowserRouter>
   )
-}
+} 

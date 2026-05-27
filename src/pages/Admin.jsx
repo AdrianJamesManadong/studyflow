@@ -5,6 +5,30 @@ import { Navigate } from 'react-router-dom'
 
 const ADMIN_EMAIL = 'adrianjames082506@gmail.com'
 
+// ─── Reusable avatar component ────────────────────────────────────────────────
+function UserAvatar({ user, size = 'sm' }) {
+  const [imgError, setImgError] = useState(false)
+  const avatarUrl = user?.avatar_url || user?.raw_user_meta_data?.avatar_url
+  const name = user?.name || user?.raw_user_meta_data?.name || user?.email
+  const sizeClass = size === 'sm' ? 'w-8 h-8 text-sm' : 'w-12 h-12 text-xl'
+
+  if (avatarUrl && !imgError) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name}
+        onError={() => setImgError(true)}
+        className={`${sizeClass} rounded-full object-cover flex-shrink-0 border border-gray-700`}
+      />
+    )
+  }
+  return (
+    <div className={`${sizeClass} rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold flex-shrink-0`}>
+      {name?.[0]?.toUpperCase() ?? '?'}
+    </div>
+  )
+}
+
 export default function Admin() {
   const { user } = useAuth()
   const [users, setUsers] = useState([])
@@ -112,10 +136,7 @@ export default function Admin() {
         .eq('id', editingId)
         .select()
 
-      console.log('update result:', data, error)
-
       if (!error) {
-        // Optimistically update local state immediately
         setAnnouncements(prev => prev.map(a =>
           a.id === editingId
             ? { ...a, title: annForm.title, message: annForm.message, type: annForm.type }
@@ -126,8 +147,6 @@ export default function Admin() {
         setAnnForm({ title: '', message: '', type: 'info' })
         fetchAnnouncements()
         setTimeout(() => setAnnSuccess(false), 3000)
-      } else {
-        console.error('Failed to update announcement:', error.message)
       }
     } else {
       const { error } = await supabase.from('announcements').insert({
@@ -141,8 +160,6 @@ export default function Admin() {
         setAnnForm({ title: '', message: '', type: 'info' })
         fetchAnnouncements()
         setTimeout(() => setAnnSuccess(false), 3000)
-      } else {
-        console.error('Failed to post announcement:', error.message)
       }
     }
     setAnnLoading(false)
@@ -178,9 +195,7 @@ export default function Admin() {
 
   function getSubjectColor(colorField) {
     if (!colorField) return null
-    if (typeof colorField === 'string' && (colorField.startsWith('#') || colorField.startsWith('rgb'))) {
-      return colorField
-    }
+    if (typeof colorField === 'string' && (colorField.startsWith('#') || colorField.startsWith('rgb'))) return colorField
     if (typeof colorField === 'object') {
       if (colorField.hex) return colorField.hex
       if (colorField.color) return colorField.color
@@ -194,10 +209,10 @@ export default function Admin() {
   )
 
   const annTypeStyles = {
-    info: 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400',
+    info:    'bg-indigo-500/10 border-indigo-500/30 text-indigo-400',
     warning: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
     success: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
-    danger: 'bg-red-500/10 border-red-500/30 text-red-400',
+    danger:  'bg-red-500/10 border-red-500/30 text-red-400',
   }
 
   return (
@@ -223,11 +238,11 @@ export default function Admin() {
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         {[
-          { label: 'Total Users', value: stats.users, icon: '👥' },
-          { label: 'Subjects', value: stats.subjects, icon: '📚' },
-          { label: 'Assignments', value: stats.assignments, icon: '📝' },
-          { label: 'Grades', value: stats.grades, icon: '📊' },
-          { label: 'Notes', value: stats.notes, icon: '🗒️' },
+          { label: 'Total Users',  value: stats.users,       icon: '👥' },
+          { label: 'Subjects',     value: stats.subjects,    icon: '📚' },
+          { label: 'Assignments',  value: stats.assignments, icon: '📝' },
+          { label: 'Grades',       value: stats.grades,      icon: '📊' },
+          { label: 'Notes',        value: stats.notes,       icon: '🗒️' },
         ].map(stat => (
           <div key={stat.label} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
             <p className="text-2xl mb-2">{stat.icon}</p>
@@ -240,7 +255,7 @@ export default function Admin() {
       {/* Tabs */}
       <div className="flex gap-2 bg-gray-900 border border-gray-800 rounded-xl p-1">
         {[
-          { key: 'users', label: '👥 Users' },
+          { key: 'users',         label: '👥 Users' },
           { key: 'announcements', label: '📢 Announcements' },
         ].map(tab => (
           <button
@@ -292,16 +307,11 @@ export default function Admin() {
                           className={`border-b border-gray-800/50 hover:bg-gray-800/50 transition cursor-pointer
                             ${selectedUser?.id === u.id ? 'bg-indigo-600/10 border-indigo-500/30' : ''}
                             ${u.email === ADMIN_EMAIL ? 'bg-indigo-600/5' : ''}`}
-                          onClick={() => {
-                            setSelectedUser(u)
-                            fetchUserDetails(u.id)
-                          }}
+                          onClick={() => { setSelectedUser(u); fetchUserDetails(u.id) }}
                         >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                                {(u.name || u.email)?.[0]?.toUpperCase()}
-                              </div>
+                              <UserAvatar user={u} size="sm" />
                               <div>
                                 <p className="text-white text-sm font-medium flex items-center gap-1">
                                   {u.name || 'No name'}
@@ -358,12 +368,13 @@ export default function Admin() {
                 </div>
 
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xl font-bold">
-                    {(selectedUser.name || selectedUser.email)?.[0]?.toUpperCase()}
-                  </div>
+                  <UserAvatar user={selectedUser} size="lg" />
                   <div>
                     <p className="text-white font-medium">{selectedUser.name || 'No name'}</p>
                     <p className="text-gray-400 text-xs">{selectedUser.email}</p>
+                    {selectedUser.raw_user_meta_data?.school && (
+                      <p className="text-gray-500 text-xs">📍 {selectedUser.raw_user_meta_data.school}{selectedUser.raw_user_meta_data?.year_level ? ` · ${selectedUser.raw_user_meta_data.year_level}` : ''}</p>
+                    )}
                     <p className="text-gray-600 text-xs">Joined {new Date(selectedUser.created_at).toLocaleDateString()}</p>
                   </div>
                 </div>
@@ -379,9 +390,7 @@ export default function Admin() {
                     <div>
                       <p className="text-gray-500 text-xs font-medium mb-1.5">
                         📚 Subjects ({userDetails.subjects.length})
-                        {userDetails.errors?.subjects && (
-                          <span className="text-red-400 ml-1">— fetch error</span>
-                        )}
+                        {userDetails.errors?.subjects && <span className="text-red-400 ml-1">— fetch error</span>}
                       </p>
                       {userDetails.subjects.length === 0 ? (
                         <p className="text-gray-600 text-xs">No subjects</p>
@@ -391,10 +400,7 @@ export default function Admin() {
                             const hexColor = getSubjectColor(s.color)
                             return (
                               <div key={s.id} className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5">
-                                <div
-                                  className="w-2 h-2 rounded-full flex-shrink-0"
-                                  style={{ backgroundColor: hexColor || '#6366f1' }}
-                                />
+                                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: hexColor || '#6366f1' }} />
                                 <p className="text-white text-xs">{s.name}</p>
                               </div>
                             )
@@ -407,9 +413,7 @@ export default function Admin() {
                     <div>
                       <p className="text-gray-500 text-xs font-medium mb-1.5">
                         📝 Assignments ({userDetails.assignments.length})
-                        {userDetails.errors?.assignments && (
-                          <span className="text-red-400 ml-1">— fetch error</span>
-                        )}
+                        {userDetails.errors?.assignments && <span className="text-red-400 ml-1">— fetch error</span>}
                       </p>
                       {userDetails.assignments.length === 0 ? (
                         <p className="text-gray-600 text-xs">No assignments</p>
@@ -429,9 +433,7 @@ export default function Admin() {
                     <div>
                       <p className="text-gray-500 text-xs font-medium mb-1.5">
                         📊 Grades ({userDetails.grades.length})
-                        {userDetails.errors?.grades && (
-                          <span className="text-red-400 ml-1">— fetch error</span>
-                        )}
+                        {userDetails.errors?.grades && <span className="text-red-400 ml-1">— fetch error</span>}
                       </p>
                       {userDetails.grades.length === 0 ? (
                         <p className="text-gray-600 text-xs">No grades</p>
@@ -456,9 +458,7 @@ export default function Admin() {
                     <div>
                       <p className="text-gray-500 text-xs font-medium mb-1.5">
                         🗒️ Notes ({userDetails.notes.length})
-                        {userDetails.errors?.notes && (
-                          <span className="text-red-400 ml-1">— fetch error</span>
-                        )}
+                        {userDetails.errors?.notes && <span className="text-red-400 ml-1">— fetch error</span>}
                       </p>
                       {userDetails.notes.length === 0 ? (
                         <p className="text-gray-600 text-xs">No notes</p>
@@ -492,8 +492,6 @@ export default function Admin() {
       {/* Announcements Tab */}
       {activeTab === 'announcements' && (
         <div className="space-y-4">
-
-          {/* Post/Edit form */}
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
@@ -505,10 +503,7 @@ export default function Admin() {
                 </p>
               </div>
               {editingAnn && (
-                <button
-                  onClick={handleCancelEdit}
-                  className="text-xs text-gray-500 hover:text-white border border-gray-700 px-3 py-1.5 rounded-lg transition"
-                >
+                <button onClick={handleCancelEdit} className="text-xs text-gray-500 hover:text-white border border-gray-700 px-3 py-1.5 rounded-lg transition">
                   Cancel Edit
                 </button>
               )}
@@ -566,7 +561,6 @@ export default function Admin() {
             </button>
           </div>
 
-          {/* Existing announcements */}
           <div className="space-y-3">
             <h3 className="text-white font-semibold">Posted Announcements ({announcements.length})</h3>
             {announcements.length === 0 && (
@@ -588,18 +582,8 @@ export default function Admin() {
                     <p className="text-gray-500 text-xs mt-2">{timeAgo(a.created_at)}</p>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => handleEditAnn(a)}
-                      className="text-gray-400 hover:text-indigo-400 text-xs transition px-2 py-1 rounded bg-gray-800 hover:bg-gray-700"
-                    >
-                      ✏️ Edit
-                    </button>
-                    <button
-                      onClick={() => setConfirmDeleteAnn(a)}
-                      className="text-gray-400 hover:text-red-400 text-xs transition px-2 py-1 rounded bg-gray-800 hover:bg-gray-700"
-                    >
-                      🗑️ Delete
-                    </button>
+                    <button onClick={() => handleEditAnn(a)} className="text-gray-400 hover:text-indigo-400 text-xs transition px-2 py-1 rounded bg-gray-800 hover:bg-gray-700">✏️ Edit</button>
+                    <button onClick={() => setConfirmDeleteAnn(a)} className="text-gray-400 hover:text-red-400 text-xs transition px-2 py-1 rounded bg-gray-800 hover:bg-gray-700">🗑️ Delete</button>
                   </div>
                 </div>
               </div>
@@ -622,18 +606,8 @@ export default function Admin() {
               </p>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmDelete(null)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleDeleteUser(confirmDelete)}
-                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-2 text-sm transition"
-              >
-                Yes, Delete
-              </button>
+              <button onClick={() => setConfirmDelete(null)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition">Cancel</button>
+              <button onClick={() => handleDeleteUser(confirmDelete)} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-2 text-sm transition">Yes, Delete</button>
             </div>
           </div>
         </div>
@@ -653,18 +627,8 @@ export default function Admin() {
               </p>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmDeleteAnn(null)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleDeleteAnnouncement(confirmDeleteAnn.id)}
-                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-2 text-sm transition"
-              >
-                Yes, Delete
-              </button>
+              <button onClick={() => setConfirmDeleteAnn(null)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition">Cancel</button>
+              <button onClick={() => handleDeleteAnnouncement(confirmDeleteAnn.id)} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-2 text-sm transition">Yes, Delete</button>
             </div>
           </div>
         </div>

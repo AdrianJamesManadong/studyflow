@@ -123,7 +123,7 @@ export default function Pomodoro() {
     const mins = String(Math.floor(timeLeft / 60)).padStart(2, '0')
     const secs = String(timeLeft % 60).padStart(2, '0')
     document.title = running ? `${mins}:${secs} — ${MODE_META[mode].label}` : 'Pomodoro Timer'
-    return () => { document.title = 'Pomodoro Timer' }
+    return () => { document.title = 'StudyFlow' }
   }, [timeLeft, running, mode])
 
   function switchMode(newMode) {

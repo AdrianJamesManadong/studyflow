@@ -2,15 +2,23 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../utils/supabase'
 import GuideModal from '../components/GuideModal'
 
 export default function Login() {
-  const { register, handleSubmit, formState: { errors } } = useForm()
+  const { register, handleSubmit, formState: { errors }, getValues } = useForm()
   const { login } = useAuth()
   const navigate = useNavigate()
   const [serverError, setServerError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
+
+  // Forgot password state
+  const [showForgot, setShowForgot] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotSuccess, setForgotSuccess] = useState(false)
+  const [forgotError, setForgotError] = useState('')
 
   async function onSubmit(data) {
     try {
@@ -20,6 +28,40 @@ export default function Login() {
     } catch (err) {
       setServerError(err.message)
     }
+  }
+
+  async function handleForgotPassword() {
+    if (!forgotEmail.trim()) { setForgotError('Please enter your email address'); return }
+    if (!/^\S+@\S+$/.test(forgotEmail)) { setForgotError('Please enter a valid email'); return }
+
+    setForgotLoading(true)
+    setForgotError('')
+
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+
+    if (error) {
+      setForgotError(error.message)
+    } else {
+      setForgotSuccess(true)
+    }
+    setForgotLoading(false)
+  }
+
+  function handleOpenForgot() {
+    // Pre-fill with whatever email they may have typed
+    setForgotEmail(getValues('email') || '')
+    setForgotError('')
+    setForgotSuccess(false)
+    setShowForgot(true)
+  }
+
+  function handleCloseForgot() {
+    setShowForgot(false)
+    setForgotSuccess(false)
+    setForgotError('')
+    setForgotEmail('')
   }
 
   return (
@@ -51,6 +93,10 @@ export default function Login() {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
+        @keyframes modal-in {
+          from { opacity: 0; transform: scale(0.95) translateY(8px); }
+          to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
 
         .float-y { animation: float-y 3s ease-in-out infinite; }
         .arrow-point { animation: arrow-point 1.4s ease-in-out infinite; }
@@ -61,6 +107,7 @@ export default function Login() {
         .soft-pulse { animation: soft-pulse 5s ease-in-out infinite; }
         .spin-ring { animation: spin-ring 20s linear infinite; }
         .spin-ring-rev { animation: spin-ring 14s linear infinite reverse; }
+        .modal-in { animation: modal-in 0.25s cubic-bezier(0.34,1.56,0.64,1) forwards; }
 
         .input-field {
           background: rgba(255,255,255,0.04);
@@ -103,6 +150,17 @@ export default function Login() {
           background: rgba(255,255,255,0.04);
           border: 1px solid rgba(255,255,255,0.07);
         }
+        .forgot-input {
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
+          transition: all 0.2s;
+        }
+        .forgot-input:focus {
+          outline: none;
+          background: rgba(255,255,255,0.07);
+          border-color: rgba(129,140,248,0.5);
+          box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+        }
       `}</style>
 
       {/* Background blobs */}
@@ -111,19 +169,15 @@ export default function Login() {
           style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%)' }} />
         <div className="soft-pulse absolute bottom-[-100px] right-[-80px] w-[380px] h-[380px] rounded-full"
           style={{ background: 'radial-gradient(circle, rgba(109,40,217,0.15) 0%, transparent 70%)', animationDelay: '2s' }} />
-
-        {/* Spinning decorative rings */}
         <div className="spin-ring absolute top-12 right-16 w-28 h-28 rounded-full hidden lg:block"
           style={{ border: '1px dashed rgba(99,102,241,0.15)' }} />
         <div className="spin-ring-rev absolute bottom-16 left-16 w-16 h-16 rounded-full hidden lg:block"
           style={{ border: '1px dashed rgba(139,92,246,0.15)' }} />
-
-        {/* Subtle grid */}
         <div className="absolute inset-0 opacity-[0.03]"
           style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
       </div>
 
-      {/* Floating study-themed decorations */}
+      {/* Floating decorations */}
       <div className="float-y absolute top-16 left-[12%] text-xl opacity-25 pointer-events-none hidden lg:block" style={{ animationDelay: '0s' }}>📖</div>
       <div className="float-y absolute top-1/3 left-8 text-lg opacity-20 pointer-events-none hidden lg:block" style={{ animationDelay: '0.8s' }}>📝</div>
       <div className="float-y absolute bottom-24 left-[14%] text-xl opacity-20 pointer-events-none hidden lg:block" style={{ animationDelay: '1.6s' }}>🎓</div>
@@ -134,7 +188,6 @@ export default function Login() {
 
         {/* Header */}
         <div className="text-center mb-7 fade-1">
-          {/* Logo mark */}
           <div className="inline-flex items-center gap-3 mb-5">
             <div className="w-11 h-11 rounded-xl flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', boxShadow: '0 4px 18px rgba(79,70,229,0.4)' }}>
@@ -148,7 +201,6 @@ export default function Login() {
 
           <p className="text-slate-400 text-sm">Welcome back! Ready to tackle your projects?</p>
 
-          {/* Stats pills — gives it a student-system feel */}
           <div className="flex items-center justify-center gap-2 mt-3">
             {[
               { icon: '🎯', label: 'Track tasks' },
@@ -162,7 +214,6 @@ export default function Login() {
             ))}
           </div>
 
-          {/* Guide button + bubble callout */}
           <div className="flex items-start justify-center mt-5">
             <button
               onClick={() => setShowGuide(true)}
@@ -171,25 +222,13 @@ export default function Login() {
               <span>✨</span>
               <span className="font-medium">How does StudyFlow work?</span>
             </button>
-
-            {/* Speech bubble to the right */}
             <div className="float-y flex items-start ml-1 pointer-events-none select-none">
-              {/* Arrow curving up-left toward button */}
-              <svg width="26" height="22" viewBox="0 0 26 22" fill="none"
-                className="arrow-point text-indigo-400 mt-1 flex-shrink-0">
-                <path d="M22 18 C16 13, 7 9, 3 3"
-                  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none"/>
-                <path d="M7 3 L3 3 L4 7"
-                  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+              <svg width="26" height="22" viewBox="0 0 26 22" fill="none" className="arrow-point text-indigo-400 mt-1 flex-shrink-0">
+                <path d="M22 18 C16 13, 7 9, 3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none"/>
+                <path d="M7 3 L3 3 L4 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
               </svg>
-              {/* Bubble */}
               <div className="bubble-pop ml-0.5"
-                style={{
-                  background: 'rgba(99,102,241,0.12)',
-                  border: '1px solid rgba(99,102,241,0.22)',
-                  borderRadius: '12px 12px 12px 2px',
-                  padding: '6px 10px',
-                }}>
+                style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.22)', borderRadius: '12px 12px 12px 2px', padding: '6px 10px' }}>
                 <p className="text-indigo-300 text-[11px] font-semibold whitespace-nowrap">New here? 👋</p>
                 <p className="text-indigo-400/60 text-[10px] whitespace-nowrap">Tap to get started!</p>
               </div>
@@ -199,8 +238,6 @@ export default function Login() {
 
         {/* Card */}
         <div className="card rounded-2xl p-7 fade-2">
-
-          {/* Card top */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-semibold text-white">Sign in to your account</h2>
@@ -261,6 +298,15 @@ export default function Login() {
                   <span>⚠️</span>{errors.password.message}
                 </p>
               )}
+              <div className="flex justify-end mt-1.5">
+                <button
+                  type="button"
+                  onClick={handleOpenForgot}
+                  className="text-[11px] text-indigo-400 hover:text-indigo-300 transition font-medium"
+                >
+                  Forgot password?
+                </button>
+              </div>
             </div>
 
             {/* Server error */}
@@ -283,7 +329,6 @@ export default function Login() {
 
           </div>
 
-          {/* Divider */}
           <div className="flex items-center gap-3 my-5">
             <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
             <span className="text-slate-600 text-xs">or</span>
@@ -300,6 +345,107 @@ export default function Login() {
 
         <p className="text-center text-slate-700 text-xs mt-4 fade-3">🔒 Secured with Supabase Auth</p>
       </div>
+
+      {/* ── Forgot Password Modal ── */}
+      {showForgot && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+          onClick={e => { if (e.target === e.currentTarget) handleCloseForgot() }}
+        >
+          <div
+            className="modal-in w-full max-w-sm rounded-2xl p-6 space-y-5"
+            style={{
+              background: 'rgba(15,23,42,0.95)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              boxShadow: '0 30px 70px rgba(0,0,0,0.6)',
+            }}
+          >
+            {!forgotSuccess ? (
+              <>
+                {/* Header */}
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+                      style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.25)' }}>
+                      <span className="text-lg">🔑</span>
+                    </div>
+                    <h3 className="text-white font-semibold text-base">Reset your password</h3>
+                    <p className="text-slate-400 text-xs mt-1 leading-relaxed">
+                      Enter your email and we'll send you a link to reset your password.
+                    </p>
+                  </div>
+                  <button onClick={handleCloseForgot} className="text-slate-600 hover:text-slate-300 transition text-lg leading-none mt-0.5">✕</button>
+                </div>
+
+                {/* Email input */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-slate-400">Email address</label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm">📧</span>
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={e => { setForgotEmail(e.target.value); setForgotError('') }}
+                      onKeyDown={e => e.key === 'Enter' && handleForgotPassword()}
+                      placeholder="janedoe@gmail.com"
+                      className="forgot-input w-full rounded-xl pl-10 pr-4 py-2.5 text-white placeholder-slate-600 text-sm"
+                      autoFocus
+                    />
+                  </div>
+                  {forgotError && (
+                    <p className="text-red-400 text-xs flex items-center gap-1 mt-1">
+                      <span>⚠️</span>{forgotError}
+                    </p>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleCloseForgot}
+                    className="flex-1 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white transition"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleForgotPassword}
+                    disabled={forgotLoading}
+                    className="flex-1 btn-primary py-2.5 rounded-xl text-sm text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {forgotLoading ? (
+                      <><span className="inline-block w-3.5 h-3.5 border-2 border-indigo-300/30 border-t-indigo-300 rounded-full animate-spin" />Sending…</>
+                    ) : 'Send reset link'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* Success state */
+              <div className="text-center py-2 space-y-4">
+                <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto"
+                  style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)' }}>
+                  <span className="text-2xl">📬</span>
+                </div>
+                <div>
+                  <h3 className="text-white font-semibold text-base">Check your inbox!</h3>
+                  <p className="text-slate-400 text-sm mt-1.5 leading-relaxed">
+                    We sent a password reset link to{' '}
+                    <span className="text-indigo-300 font-medium">{forgotEmail}</span>.
+                    Check your spam folder if you don't see it.
+                  </p>
+                </div>
+                <button
+                  onClick={handleCloseForgot}
+                  className="btn-primary w-full py-2.5 rounded-xl text-sm text-white font-semibold"
+                >
+                  Back to sign in
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
     </div>
