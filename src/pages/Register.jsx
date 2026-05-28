@@ -1,17 +1,18 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import GuideModal from '../components/GuideModal'
 
 export default function Register() {
   const { register, handleSubmit, watch, formState: { errors } } = useForm()
   const { register: registerUser } = useAuth()
-  const navigate = useNavigate()
   const [serverError, setServerError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
+  const [emailSent, setEmailSent] = useState(false)
+  const [registeredEmail, setRegisteredEmail] = useState('')
 
   const passwordValue = watch('password', '')
   const confirmValue = watch('confirmPassword', '')
@@ -21,12 +22,112 @@ export default function Register() {
     try {
       setServerError('')
       await registerUser(data.email, data.password, data.name)
-      navigate('/dashboard')
+      setRegisteredEmail(data.email)
+      setEmailSent(true)
     } catch (err) {
       setServerError(err.message)
     }
   }
 
+  // ── Email confirmation screen ──────────────────────────────────────────────
+  if (emailSent) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center p-3 overflow-hidden relative"
+        style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)' }}
+      >
+        <style>{`
+          @keyframes fade-up {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes soft-pulse {
+            0%, 100% { opacity: 0.5; transform: scale(1); }
+            50%       { opacity: 0.8; transform: scale(1.04); }
+          }
+          @keyframes bounce-in {
+            0%   { opacity: 0; transform: scale(0.6); }
+            70%  { transform: scale(1.1); }
+            100% { opacity: 1; transform: scale(1); }
+          }
+          .fade-up    { animation: fade-up 0.5s ease forwards; }
+          .soft-pulse { animation: soft-pulse 5s ease-in-out infinite; }
+          .bounce-in  { animation: bounce-in 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+          .btn-primary {
+            background: linear-gradient(135deg, #4f46e5, #6d28d9);
+            box-shadow: 0 4px 20px rgba(79,70,229,0.35);
+            transition: all 0.2s;
+          }
+          .btn-primary:hover {
+            background: linear-gradient(135deg, #5b52f0, #7c3aed);
+            box-shadow: 0 6px 28px rgba(79,70,229,0.5);
+            transform: translateY(-1px);
+          }
+        `}</style>
+
+        {/* Background blobs */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="soft-pulse absolute top-[-120px] left-[-100px] w-[420px] h-[420px] rounded-full"
+            style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%)' }} />
+          <div className="soft-pulse absolute bottom-[-100px] right-[-80px] w-[380px] h-[380px] rounded-full"
+            style={{ background: 'radial-gradient(circle, rgba(109,40,217,0.15) 0%, transparent 70%)', animationDelay: '2s' }} />
+        </div>
+
+        <div className="relative z-10 w-full max-w-[420px] fade-up">
+          <div className="rounded-2xl p-8 text-center"
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.07)',
+              backdropFilter: 'blur(20px)',
+              boxShadow: '0 30px 70px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
+            }}
+          >
+            {/* Icon */}
+            <div className="bounce-in text-6xl mb-5">📬</div>
+
+            {/* Title */}
+            <h2 className="text-2xl font-bold text-white mb-2">Check your inbox!</h2>
+            <p className="text-slate-400 text-sm mb-1">We sent a confirmation link to:</p>
+            <p className="text-indigo-300 font-semibold text-sm mb-5 break-all">{registeredEmail}</p>
+
+            {/* Info box */}
+            <div className="rounded-xl px-4 py-3 mb-6 text-left"
+              style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.18)' }}>
+              <p className="text-slate-400 text-xs leading-relaxed">
+                📩 &nbsp;Click the link in the email to verify your account.<br />
+                🕐 &nbsp;The link expires in <span className="text-indigo-300 font-medium">24 hours</span>.<br />
+                📁 &nbsp;Can't find it? Check your <span className="text-indigo-300 font-medium">spam or junk</span> folder.
+              </p>
+            </div>
+
+            {/* CTA */}
+            <Link
+              to="/login"
+              className="btn-primary inline-flex items-center gap-2 text-white font-semibold py-2.5 px-8 rounded-xl text-sm"
+            >
+              <span>Go to Sign In</span>
+              <span className="text-indigo-300">→</span>
+            </Link>
+
+            {/* Go back */}
+            <p className="text-slate-600 text-xs mt-5">
+              Wrong email?{' '}
+              <button
+                onClick={() => { setEmailSent(false); setServerError('') }}
+                className="text-indigo-400 hover:text-indigo-300 transition"
+              >
+                Go back
+              </button>
+            </p>
+          </div>
+
+          <p className="text-center text-slate-700 text-xs mt-3">🔒 Secured with Supabase Auth</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Registration form ──────────────────────────────────────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center p-3 overflow-hidden relative"
       style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)' }}
@@ -160,7 +261,7 @@ export default function Register() {
 
       <div className="w-full max-w-[420px] relative z-10">
 
-        {/* ── Back to home ── */}
+        {/* Back to home */}
         <div className="mb-4 fade-1">
           <Link to="/" className="back-home inline-flex items-center gap-1.5 text-xs">
             <span>←</span>
@@ -197,7 +298,7 @@ export default function Register() {
             ))}
           </div>
 
-          {/* Guide button + bubble callout */}
+          {/* Guide button */}
           <div className="flex items-start justify-center mt-4">
             <button
               onClick={() => setShowGuide(true)}
@@ -232,7 +333,6 @@ export default function Register() {
         {/* Card */}
         <div className="card rounded-2xl p-5 fade-2">
 
-          {/* Card top */}
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold text-white">Create your account</h2>
