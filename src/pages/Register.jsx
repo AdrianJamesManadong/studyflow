@@ -130,6 +130,11 @@ export default function Register() {
           background: rgba(255,255,255,0.04);
           border: 1px solid rgba(255,255,255,0.07);
         }
+        .back-home {
+          color: #64748b;
+          transition: color 0.2s;
+        }
+        .back-home:hover { color: #cbd5e1; }
       `}</style>
 
       {/* Background blobs */}
@@ -154,6 +159,14 @@ export default function Register() {
       <div className="float-y absolute bottom-20 right-[13%] text-xl opacity-25 pointer-events-none hidden lg:block" style={{ animationDelay: '1.2s' }}>✏️</div>
 
       <div className="w-full max-w-[420px] relative z-10">
+
+        {/* ── Back to home ── */}
+        <div className="mb-4 fade-1">
+          <Link to="/" className="back-home inline-flex items-center gap-1.5 text-xs">
+            <span>←</span>
+            <span>Back to home</span>
+          </Link>
+        </div>
 
         {/* Header */}
         <div className="text-center mb-4 fade-1">

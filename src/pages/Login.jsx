@@ -50,7 +50,6 @@ export default function Login() {
   }
 
   function handleOpenForgot() {
-    // Pre-fill with whatever email they may have typed
     setForgotEmail(getValues('email') || '')
     setForgotError('')
     setForgotSuccess(false)
@@ -161,6 +160,11 @@ export default function Login() {
           border-color: rgba(129,140,248,0.5);
           box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
         }
+        .back-home {
+          color: #64748b;
+          transition: color 0.2s;
+        }
+        .back-home:hover { color: #cbd5e1; }
       `}</style>
 
       {/* Background blobs */}
@@ -185,6 +189,14 @@ export default function Login() {
       <div className="float-y absolute bottom-20 right-[13%] text-xl opacity-25 pointer-events-none hidden lg:block" style={{ animationDelay: '1.2s' }}>✏️</div>
 
       <div className="w-full max-w-[420px] relative z-10">
+
+        {/* ── Back to home ── */}
+        <div className="mb-4 fade-1">
+          <Link to="/" className="back-home inline-flex items-center gap-1.5 text-xs">
+            <span>←</span>
+            <span>Back to home</span>
+          </Link>
+        </div>
 
         {/* Header */}
         <div className="text-center mb-7 fade-1">

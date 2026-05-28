@@ -5,7 +5,6 @@ import { Navigate } from 'react-router-dom'
 
 const ADMIN_EMAIL = 'adrianjames082506@gmail.com'
 
-// ─── Reusable avatar component ────────────────────────────────────────────────
 function UserAvatar({ user, size = 'sm' }) {
   const [imgError, setImgError] = useState(false)
   const avatarUrl = user?.avatar_url || user?.raw_user_meta_data?.avatar_url
@@ -326,7 +325,10 @@ export default function Admin() {
                           <td className="px-4 py-3 text-gray-400 text-xs">
                             {new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                           </td>
-                          <td className="px-4 py-3 text-gray-400 text-xs">{timeAgo(u.last_sign_in_at)}</td>
+                          {/* ← updated: reads last_seen_at, falls back to last_sign_in_at */}
+                          <td className="px-4 py-3 text-gray-400 text-xs">
+                            {timeAgo(u.last_seen_at || u.last_sign_in_at)}
+                          </td>
                           <td className="px-4 py-3 text-center"><span className="text-sky-400 font-medium text-sm">{u.subject_count}</span></td>
                           <td className="px-4 py-3 text-center"><span className="text-amber-400 font-medium text-sm">{u.assignment_count}</span></td>
                           <td className="px-4 py-3 text-center"><span className="text-emerald-400 font-medium text-sm">{u.grade_count}</span></td>
@@ -376,6 +378,10 @@ export default function Admin() {
                       <p className="text-gray-500 text-xs">📍 {selectedUser.raw_user_meta_data.school}{selectedUser.raw_user_meta_data?.year_level ? ` · ${selectedUser.raw_user_meta_data.year_level}` : ''}</p>
                     )}
                     <p className="text-gray-600 text-xs">Joined {new Date(selectedUser.created_at).toLocaleDateString()}</p>
+                    {/* ← also show last seen in detail panel */}
+                    <p className="text-gray-600 text-xs">
+                      Last seen {timeAgo(selectedUser.last_seen_at || selectedUser.last_sign_in_at)}
+                    </p>
                   </div>
                 </div>
 
