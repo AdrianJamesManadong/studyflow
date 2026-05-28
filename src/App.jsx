@@ -63,11 +63,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={
-          <PublicOnlyRoute>
-            <Home />
-          </PublicOnlyRoute>
-        } />
+        {/* ✅ Home is fully public — no redirect after logout */}
+        <Route path="/" element={<Home />} />
+
         <Route path="/login" element={
           <PublicOnlyRoute>
             <Login />
