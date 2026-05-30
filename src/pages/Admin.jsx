@@ -215,37 +215,40 @@ export default function Admin() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-bold text-white">Admin Panel</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-white">Admin Panel</h2>
             <span className="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full">Admin</span>
           </div>
-          <p className="text-gray-400 text-sm mt-1">Manage StudyFlow users and announcements</p>
+          <p className="text-gray-400 text-xs sm:text-sm mt-1">Manage StudyFlow users and announcements</p>
         </div>
         <button
           onClick={() => { fetchData(); fetchAnnouncements() }}
-          className="text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white px-4 py-2 rounded-lg transition"
+          className="text-xs sm:text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white px-3 sm:px-4 py-2 rounded-lg transition"
         >
-          🔄 Refresh
+          🔄 <span className="hidden sm:inline">Refresh</span>
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      {/* Stats — 2-col on mobile, 5-col on lg */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         {[
           { label: 'Total Users',  value: stats.users,       icon: '👥' },
           { label: 'Subjects',     value: stats.subjects,    icon: '📚' },
           { label: 'Assignments',  value: stats.assignments, icon: '📝' },
           { label: 'Grades',       value: stats.grades,      icon: '📊' },
           { label: 'Notes',        value: stats.notes,       icon: '🗒️' },
-        ].map(stat => (
-          <div key={stat.label} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-            <p className="text-2xl mb-2">{stat.icon}</p>
-            <p className="text-2xl font-bold text-white">{stat.value}</p>
+        ].map((stat, i) => (
+          <div
+            key={stat.label}
+            className={`bg-gray-900 border border-gray-800 rounded-xl p-3 sm:p-4 ${i === 4 ? 'col-span-2 lg:col-span-1' : ''}`}
+          >
+            <p className="text-xl sm:text-2xl mb-1 sm:mb-2">{stat.icon}</p>
+            <p className="text-xl sm:text-2xl font-bold text-white">{stat.value}</p>
             <p className="text-gray-500 text-xs mt-0.5">{stat.label}</p>
           </div>
         ))}
@@ -268,10 +271,10 @@ export default function Admin() {
         ))}
       </div>
 
-      {/* Users Tab */}
+      {/* ─── Users Tab ─── */}
       {activeTab === 'users' && (
-        <div className="flex gap-4">
-          <div className="flex-1 space-y-3">
+        <div className="flex flex-col lg:flex-row gap-4">
+          <div className="flex-1 space-y-3 min-w-0">
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -284,233 +287,212 @@ export default function Admin() {
                 <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
               </div>
             ) : (
-              <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-800">
-                        <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">User</th>
-                        <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">Joined</th>
-                        <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">Last Seen</th>
-                        <th className="text-center px-4 py-3 text-xs text-gray-500 font-medium">Subjects</th>
-                        <th className="text-center px-4 py-3 text-xs text-gray-500 font-medium">Assignments</th>
-                        <th className="text-center px-4 py-3 text-xs text-gray-500 font-medium">Grades</th>
-                        <th className="text-center px-4 py-3 text-xs text-gray-500 font-medium">Notes</th>
-                        <th className="text-center px-4 py-3 text-xs text-gray-500 font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.map(u => (
-                        <tr
-                          key={u.id}
-                          className={`border-b border-gray-800/50 hover:bg-gray-800/50 transition cursor-pointer
-                            ${selectedUser?.id === u.id ? 'bg-indigo-600/10 border-indigo-500/30' : ''}
-                            ${u.email === ADMIN_EMAIL ? 'bg-indigo-600/5' : ''}`}
-                          onClick={() => { setSelectedUser(u); fetchUserDetails(u.id) }}
-                        >
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <UserAvatar user={u} size="sm" />
-                              <div>
-                                <p className="text-white text-sm font-medium flex items-center gap-1">
-                                  {u.name || 'No name'}
-                                  {u.email === ADMIN_EMAIL && (
-                                    <span className="text-xs bg-indigo-600 text-white px-1.5 py-0.5 rounded-full">Admin</span>
-                                  )}
-                                </p>
-                                <p className="text-gray-500 text-xs">{u.email}</p>
+              <>
+                {/* ── Desktop table (hidden on mobile) ── */}
+                <div className="hidden md:block bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-800">
+                          <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">User</th>
+                          <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">Joined</th>
+                          <th className="text-left px-4 py-3 text-xs text-gray-500 font-medium">Last Seen</th>
+                          <th className="text-center px-4 py-3 text-xs text-gray-500 font-medium">Subjects</th>
+                          <th className="text-center px-4 py-3 text-xs text-gray-500 font-medium">Assignments</th>
+                          <th className="text-center px-4 py-3 text-xs text-gray-500 font-medium">Grades</th>
+                          <th className="text-center px-4 py-3 text-xs text-gray-500 font-medium">Notes</th>
+                          <th className="text-center px-4 py-3 text-xs text-gray-500 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map(u => (
+                          <tr
+                            key={u.id}
+                            className={`border-b border-gray-800/50 hover:bg-gray-800/50 transition cursor-pointer
+                              ${selectedUser?.id === u.id ? 'bg-indigo-600/10 border-indigo-500/30' : ''}
+                              ${u.email === ADMIN_EMAIL ? 'bg-indigo-600/5' : ''}`}
+                            onClick={() => { setSelectedUser(u); fetchUserDetails(u.id) }}
+                          >
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-3">
+                                <UserAvatar user={u} size="sm" />
+                                <div>
+                                  <p className="text-white text-sm font-medium flex items-center gap-1">
+                                    {u.name || 'No name'}
+                                    {u.email === ADMIN_EMAIL && (
+                                      <span className="text-xs bg-indigo-600 text-white px-1.5 py-0.5 rounded-full">Admin</span>
+                                    )}
+                                  </p>
+                                  <p className="text-gray-500 text-xs">{u.email}</p>
+                                </div>
                               </div>
+                            </td>
+                            <td className="px-4 py-3 text-gray-400 text-xs">
+                              {new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </td>
+                            <td className="px-4 py-3 text-gray-400 text-xs">
+                              {timeAgo(u.last_seen_at || u.last_sign_in_at)}
+                            </td>
+                            <td className="px-4 py-3 text-center"><span className="text-sky-400 font-medium text-sm">{u.subject_count}</span></td>
+                            <td className="px-4 py-3 text-center"><span className="text-amber-400 font-medium text-sm">{u.assignment_count}</span></td>
+                            <td className="px-4 py-3 text-center"><span className="text-emerald-400 font-medium text-sm">{u.grade_count}</span></td>
+                            <td className="px-4 py-3 text-center"><span className="text-purple-400 font-medium text-sm">{u.note_count}</span></td>
+                            <td className="px-4 py-3 text-center">
+                              {u.email !== ADMIN_EMAIL && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); setConfirmDelete(u) }}
+                                  className="text-gray-600 hover:text-red-400 text-xs transition"
+                                >
+                                  🗑️
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {filtered.length === 0 && (
+                      <div className="text-center py-12">
+                        <p className="text-gray-500 text-sm">No users found.</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="px-4 py-3 border-t border-gray-800">
+                    <p className="text-gray-600 text-xs">{filtered.length} user{filtered.length !== 1 ? 's' : ''}</p>
+                  </div>
+                </div>
+
+                {/* ── Mobile user cards (hidden on md+) ── */}
+                <div className="md:hidden space-y-2">
+                  {filtered.length === 0 ? (
+                    <div className="text-center py-12">
+                      <p className="text-gray-500 text-sm">No users found.</p>
+                    </div>
+                  ) : (
+                    filtered.map(u => (
+                      /* FIX: changed from <button> to <div> to prevent nested button hydration error */
+                      <div
+                        key={u.id}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={e => e.key === 'Enter' && (setSelectedUser(u), fetchUserDetails(u.id))}
+                        onClick={() => { setSelectedUser(u); fetchUserDetails(u.id) }}
+                        className={`w-full text-left bg-gray-900 border rounded-xl px-4 py-3 transition active:scale-[0.98] cursor-pointer
+                          ${selectedUser?.id === u.id ? 'border-indigo-500/50 bg-indigo-600/5' : 'border-gray-800 hover:border-gray-700'}
+                          ${u.email === ADMIN_EMAIL ? 'bg-indigo-600/5' : ''}`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          {/* Left: avatar + name */}
+                          <div className="flex items-center gap-3 min-w-0">
+                            <UserAvatar user={u} size="sm" />
+                            <div className="min-w-0">
+                              <p className="text-white text-sm font-medium flex items-center gap-1 flex-wrap">
+                                <span className="truncate">{u.name || 'No name'}</span>
+                                {u.email === ADMIN_EMAIL && (
+                                  <span className="text-xs bg-indigo-600 text-white px-1.5 py-0.5 rounded-full flex-shrink-0">Admin</span>
+                                )}
+                              </p>
+                              <p className="text-gray-500 text-xs truncate">{u.email}</p>
+                              <p className="text-gray-600 text-xs mt-0.5">
+                                Last seen {timeAgo(u.last_seen_at || u.last_sign_in_at)}
+                              </p>
                             </div>
-                          </td>
-                          <td className="px-4 py-3 text-gray-400 text-xs">
-                            {new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                          </td>
-                          {/* ← updated: reads last_seen_at, falls back to last_sign_in_at */}
-                          <td className="px-4 py-3 text-gray-400 text-xs">
-                            {timeAgo(u.last_seen_at || u.last_sign_in_at)}
-                          </td>
-                          <td className="px-4 py-3 text-center"><span className="text-sky-400 font-medium text-sm">{u.subject_count}</span></td>
-                          <td className="px-4 py-3 text-center"><span className="text-amber-400 font-medium text-sm">{u.assignment_count}</span></td>
-                          <td className="px-4 py-3 text-center"><span className="text-emerald-400 font-medium text-sm">{u.grade_count}</span></td>
-                          <td className="px-4 py-3 text-center"><span className="text-purple-400 font-medium text-sm">{u.note_count}</span></td>
-                          <td className="px-4 py-3 text-center">
+                          </div>
+
+                          {/* Right: stat pills + delete */}
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="flex gap-1.5 flex-wrap justify-end">
+                              <span className="text-sky-400 text-xs font-medium bg-sky-400/10 px-1.5 py-0.5 rounded-md">{u.subject_count}S</span>
+                              <span className="text-amber-400 text-xs font-medium bg-amber-400/10 px-1.5 py-0.5 rounded-md">{u.assignment_count}A</span>
+                              <span className="text-emerald-400 text-xs font-medium bg-emerald-400/10 px-1.5 py-0.5 rounded-md">{u.grade_count}G</span>
+                              <span className="text-purple-400 text-xs font-medium bg-purple-400/10 px-1.5 py-0.5 rounded-md">{u.note_count}N</span>
+                            </div>
                             {u.email !== ADMIN_EMAIL && (
                               <button
                                 onClick={e => { e.stopPropagation(); setConfirmDelete(u) }}
-                                className="text-gray-600 hover:text-red-400 text-xs transition"
+                                className="text-gray-600 hover:text-red-400 text-sm transition p-1"
                               >
                                 🗑️
                               </button>
                             )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {filtered.length === 0 && (
-                    <div className="text-center py-12">
-                      <p className="text-gray-500 text-sm">No users found.</p>
-                    </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
                   )}
+                  <p className="text-gray-600 text-xs px-1 pt-1">{filtered.length} user{filtered.length !== 1 ? 's' : ''}</p>
                 </div>
-                <div className="px-4 py-3 border-t border-gray-800">
-                  <p className="text-gray-600 text-xs">{filtered.length} user{filtered.length !== 1 ? 's' : ''}</p>
-                </div>
-              </div>
+              </>
             )}
           </div>
 
-          {/* User detail panel */}
+          {/* ── Desktop side panel ── */}
           {selectedUser && (
-            <div className="w-80 flex-shrink-0 space-y-3">
-              <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-white font-semibold">User Details</h3>
-                  <button onClick={() => { setSelectedUser(null); setUserDetails(null) }} className="text-gray-500 hover:text-white text-xs transition">✕</button>
-                </div>
-
-                <div className="flex items-center gap-3 mb-4">
-                  <UserAvatar user={selectedUser} size="lg" />
-                  <div>
-                    <p className="text-white font-medium">{selectedUser.name || 'No name'}</p>
-                    <p className="text-gray-400 text-xs">{selectedUser.email}</p>
-                    {selectedUser.raw_user_meta_data?.school && (
-                      <p className="text-gray-500 text-xs">📍 {selectedUser.raw_user_meta_data.school}{selectedUser.raw_user_meta_data?.year_level ? ` · ${selectedUser.raw_user_meta_data.year_level}` : ''}</p>
-                    )}
-                    <p className="text-gray-600 text-xs">Joined {new Date(selectedUser.created_at).toLocaleDateString()}</p>
-                    {/* ← also show last seen in detail panel */}
-                    <p className="text-gray-600 text-xs">
-                      Last seen {timeAgo(selectedUser.last_seen_at || selectedUser.last_sign_in_at)}
-                    </p>
-                  </div>
-                </div>
-
-                {userDetailsLoading ? (
-                  <div className="text-center py-6">
-                    <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                  </div>
-                ) : userDetails ? (
-                  <div className="space-y-3">
-
-                    {/* Subjects */}
-                    <div>
-                      <p className="text-gray-500 text-xs font-medium mb-1.5">
-                        📚 Subjects ({userDetails.subjects.length})
-                        {userDetails.errors?.subjects && <span className="text-red-400 ml-1">— fetch error</span>}
-                      </p>
-                      {userDetails.subjects.length === 0 ? (
-                        <p className="text-gray-600 text-xs">No subjects</p>
-                      ) : (
-                        <div className="space-y-1">
-                          {userDetails.subjects.map(s => {
-                            const hexColor = getSubjectColor(s.color)
-                            return (
-                              <div key={s.id} className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5">
-                                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: hexColor || '#6366f1' }} />
-                                <p className="text-white text-xs">{s.name}</p>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Assignments */}
-                    <div>
-                      <p className="text-gray-500 text-xs font-medium mb-1.5">
-                        📝 Assignments ({userDetails.assignments.length})
-                        {userDetails.errors?.assignments && <span className="text-red-400 ml-1">— fetch error</span>}
-                      </p>
-                      {userDetails.assignments.length === 0 ? (
-                        <p className="text-gray-600 text-xs">No assignments</p>
-                      ) : (
-                        <div className="space-y-1 max-h-32 overflow-y-auto">
-                          {userDetails.assignments.map(a => (
-                            <div key={a.id} className="bg-gray-800 rounded-lg px-3 py-1.5">
-                              <p className={`text-xs ${a.status === 'done' ? 'line-through text-gray-500' : 'text-white'}`}>{a.title}</p>
-                              <p className="text-gray-600 text-xs">Due {a.due_date}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Grades */}
-                    <div>
-                      <p className="text-gray-500 text-xs font-medium mb-1.5">
-                        📊 Grades ({userDetails.grades.length})
-                        {userDetails.errors?.grades && <span className="text-red-400 ml-1">— fetch error</span>}
-                      </p>
-                      {userDetails.grades.length === 0 ? (
-                        <p className="text-gray-600 text-xs">No grades</p>
-                      ) : (
-                        <div className="space-y-1 max-h-32 overflow-y-auto">
-                          {userDetails.grades.map(g => {
-                            const pct = ((g.score / g.max_score) * 100).toFixed(1)
-                            return (
-                              <div key={g.id} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-1.5">
-                                <p className="text-white text-xs">{g.title}</p>
-                                <p className={`text-xs font-medium ${parseFloat(pct) >= 90 ? 'text-emerald-400' : parseFloat(pct) >= 75 ? 'text-amber-400' : 'text-red-400'}`}>
-                                  {pct}%
-                                </p>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Notes */}
-                    <div>
-                      <p className="text-gray-500 text-xs font-medium mb-1.5">
-                        🗒️ Notes ({userDetails.notes.length})
-                        {userDetails.errors?.notes && <span className="text-red-400 ml-1">— fetch error</span>}
-                      </p>
-                      {userDetails.notes.length === 0 ? (
-                        <p className="text-gray-600 text-xs">No notes</p>
-                      ) : (
-                        <div className="space-y-1 max-h-32 overflow-y-auto">
-                          {userDetails.notes.map(n => (
-                            <div key={n.id} className="bg-gray-800 rounded-lg px-3 py-1.5">
-                              <p className="text-white text-xs">{n.title}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {selectedUser.email !== ADMIN_EMAIL && (
-                      <button
-                        onClick={() => setConfirmDelete(selectedUser)}
-                        className="w-full bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 text-red-400 text-xs font-medium py-2 rounded-lg transition mt-2"
-                      >
-                        🗑️ Delete User Data
-                      </button>
-                    )}
-                  </div>
-                ) : null}
-              </div>
+            <div className="hidden lg:block w-80 flex-shrink-0 space-y-3">
+              <UserDetailPanel
+                selectedUser={selectedUser}
+                userDetails={userDetails}
+                userDetailsLoading={userDetailsLoading}
+                onClose={() => { setSelectedUser(null); setUserDetails(null) }}
+                onDeleteRequest={() => setConfirmDelete(selectedUser)}
+                timeAgo={timeAgo}
+                getSubjectColor={getSubjectColor}
+                ADMIN_EMAIL={ADMIN_EMAIL}
+              />
             </div>
           )}
         </div>
       )}
 
-      {/* Announcements Tab */}
+      {/* ── Mobile bottom sheet for user detail ── */}
+      {selectedUser && (
+        <div className="lg:hidden">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/60 z-40 transition-opacity"
+            onClick={() => { setSelectedUser(null); setUserDetails(null) }}
+          />
+          {/* Sheet */}
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-gray-950 border-t border-gray-800 rounded-t-2xl max-h-[80vh] overflow-y-auto">
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 bg-gray-700 rounded-full" />
+            </div>
+            <div className="px-4 pb-6">
+              <UserDetailPanel
+                selectedUser={selectedUser}
+                userDetails={userDetails}
+                userDetailsLoading={userDetailsLoading}
+                onClose={() => { setSelectedUser(null); setUserDetails(null) }}
+                onDeleteRequest={() => setConfirmDelete(selectedUser)}
+                timeAgo={timeAgo}
+                getSubjectColor={getSubjectColor}
+                ADMIN_EMAIL={ADMIN_EMAIL}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Announcements Tab ─── */}
       {activeTab === 'announcements' && (
         <div className="space-y-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-white font-semibold">
                   {editingAnn ? '✏️ Edit Announcement' : '📢 Post Announcement'}
                 </h3>
                 <p className="text-gray-400 text-xs mt-0.5">
-                  {editingAnn ? 'Update the announcement below.' : 'This will be visible to all users in their dashboard.'}
+                  {editingAnn ? 'Update the announcement below.' : 'Visible to all users on their dashboard.'}
                 </p>
               </div>
               {editingAnn && (
-                <button onClick={handleCancelEdit} className="text-xs text-gray-500 hover:text-white border border-gray-700 px-3 py-1.5 rounded-lg transition">
-                  Cancel Edit
+                <button
+                  onClick={handleCancelEdit}
+                  className="text-xs text-gray-500 hover:text-white border border-gray-700 px-3 py-1.5 rounded-lg transition flex-shrink-0"
+                >
+                  Cancel
                 </button>
               )}
             </div>
@@ -538,12 +520,12 @@ export default function Admin() {
 
             <div>
               <label className="block text-sm text-gray-400 mb-1">Type</label>
-              <div className="flex gap-2 flex-wrap">
+              <div className="grid grid-cols-2 sm:flex gap-2">
                 {['info', 'warning', 'success', 'danger'].map(t => (
                   <button
                     key={t}
                     onClick={() => setAnnForm(f => ({ ...f, type: t }))}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize border transition
+                    className={`px-3 py-2 sm:py-1.5 rounded-lg text-xs font-medium capitalize border transition
                       ${annForm.type === t ? annTypeStyles[t] : 'bg-gray-800 border-gray-700 text-gray-400'}`}
                   >
                     {t === 'info' ? 'ℹ️' : t === 'warning' ? '⚠️' : t === 'success' ? '✅' : '🚨'} {t}
@@ -561,7 +543,7 @@ export default function Admin() {
             <button
               onClick={handlePostAnnouncement}
               disabled={annLoading || !annForm.title.trim() || !annForm.message.trim()}
-              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-6 py-2.5 rounded-lg transition text-sm"
+              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-6 py-2.5 rounded-lg transition text-sm"
             >
               {annLoading ? 'Saving...' : editingAnn ? '💾 Save Changes' : '📢 Post Announcement'}
             </button>
@@ -579,7 +561,7 @@ export default function Admin() {
               <div key={a.id} className={`border rounded-xl p-4 ${annTypeStyles[a.type]} ${editingAnn?.id === a.id ? 'ring-2 ring-indigo-500' : ''}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span>{a.type === 'info' ? 'ℹ️' : a.type === 'warning' ? '⚠️' : a.type === 'success' ? '✅' : '🚨'}</span>
                       <p className="font-semibold text-white">{a.title}</p>
                       <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${annTypeStyles[a.type]}`}>{a.type}</span>
@@ -587,9 +569,19 @@ export default function Admin() {
                     <p className="text-gray-300 text-sm">{a.message}</p>
                     <p className="text-gray-500 text-xs mt-2">{timeAgo(a.created_at)}</p>
                   </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <button onClick={() => handleEditAnn(a)} className="text-gray-400 hover:text-indigo-400 text-xs transition px-2 py-1 rounded bg-gray-800 hover:bg-gray-700">✏️ Edit</button>
-                    <button onClick={() => setConfirmDeleteAnn(a)} className="text-gray-400 hover:text-red-400 text-xs transition px-2 py-1 rounded bg-gray-800 hover:bg-gray-700">🗑️ Delete</button>
+                  <div className="flex flex-col sm:flex-row gap-1.5 flex-shrink-0">
+                    <button
+                      onClick={() => handleEditAnn(a)}
+                      className="text-gray-400 hover:text-indigo-400 text-xs transition px-2 py-1.5 rounded bg-gray-800 hover:bg-gray-700 whitespace-nowrap"
+                    >
+                      ✏️ <span className="hidden sm:inline">Edit</span>
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteAnn(a)}
+                      className="text-gray-400 hover:text-red-400 text-xs transition px-2 py-1.5 rounded bg-gray-800 hover:bg-gray-700 whitespace-nowrap"
+                    >
+                      🗑️ <span className="hidden sm:inline">Delete</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -600,8 +592,8 @@ export default function Admin() {
 
       {/* Confirm Delete User Modal */}
       {confirmDelete && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-t-2xl sm:rounded-2xl p-6 w-full sm:max-w-sm space-y-4">
             <div className="text-center">
               <p className="text-3xl mb-3">🗑️</p>
               <h3 className="text-white font-semibold text-lg">Delete User Data?</h3>
@@ -612,8 +604,8 @@ export default function Admin() {
               </p>
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setConfirmDelete(null)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition">Cancel</button>
-              <button onClick={() => handleDeleteUser(confirmDelete)} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-2 text-sm transition">Yes, Delete</button>
+              <button onClick={() => setConfirmDelete(null)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-3 sm:py-2 text-sm transition">Cancel</button>
+              <button onClick={() => handleDeleteUser(confirmDelete)} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-3 sm:py-2 text-sm transition">Yes, Delete</button>
             </div>
           </div>
         </div>
@@ -621,8 +613,8 @@ export default function Admin() {
 
       {/* Confirm Delete Announcement Modal */}
       {confirmDeleteAnn && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-t-2xl sm:rounded-2xl p-6 w-full sm:max-w-sm space-y-4">
             <div className="text-center">
               <p className="text-3xl mb-3">📢</p>
               <h3 className="text-white font-semibold text-lg">Delete Announcement?</h3>
@@ -633,13 +625,146 @@ export default function Admin() {
               </p>
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setConfirmDeleteAnn(null)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition">Cancel</button>
-              <button onClick={() => handleDeleteAnnouncement(confirmDeleteAnn.id)} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-2 text-sm transition">Yes, Delete</button>
+              <button onClick={() => setConfirmDeleteAnn(null)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-3 sm:py-2 text-sm transition">Cancel</button>
+              <button onClick={() => handleDeleteAnnouncement(confirmDeleteAnn.id)} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-3 sm:py-2 text-sm transition">Yes, Delete</button>
             </div>
           </div>
         </div>
       )}
 
+    </div>
+  )
+}
+
+/* ─── Extracted detail panel (reused by both desktop sidebar and mobile sheet) ─── */
+function UserDetailPanel({ selectedUser, userDetails, userDetailsLoading, onClose, onDeleteRequest, timeAgo, getSubjectColor, ADMIN_EMAIL }) {
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-white font-semibold">User Details</h3>
+        <button onClick={onClose} className="text-gray-500 hover:text-white text-lg leading-none transition">✕</button>
+      </div>
+
+      <div className="flex items-center gap-3 mb-4">
+        <UserAvatar user={selectedUser} size="lg" />
+        <div>
+          <p className="text-white font-medium">{selectedUser.name || 'No name'}</p>
+          <p className="text-gray-400 text-xs">{selectedUser.email}</p>
+          {selectedUser.raw_user_meta_data?.school && (
+            <p className="text-gray-500 text-xs">
+              📍 {selectedUser.raw_user_meta_data.school}
+              {selectedUser.raw_user_meta_data?.year_level ? ` · ${selectedUser.raw_user_meta_data.year_level}` : ''}
+            </p>
+          )}
+          <p className="text-gray-600 text-xs">Joined {new Date(selectedUser.created_at).toLocaleDateString()}</p>
+          <p className="text-gray-600 text-xs">Last seen {timeAgo(selectedUser.last_seen_at || selectedUser.last_sign_in_at)}</p>
+        </div>
+      </div>
+
+      {userDetailsLoading ? (
+        <div className="text-center py-6">
+          <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      ) : userDetails ? (
+        <div className="space-y-3">
+
+          {/* Subjects */}
+          <div>
+            <p className="text-gray-500 text-xs font-medium mb-1.5">
+              📚 Subjects ({userDetails.subjects.length})
+              {userDetails.errors?.subjects && <span className="text-red-400 ml-1">— fetch error</span>}
+            </p>
+            {userDetails.subjects.length === 0 ? (
+              <p className="text-gray-600 text-xs">No subjects</p>
+            ) : (
+              <div className="space-y-1">
+                {userDetails.subjects.map(s => {
+                  const hexColor = getSubjectColor(s.color)
+                  return (
+                    <div key={s.id} className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: hexColor || '#6366f1' }} />
+                      <p className="text-white text-xs">{s.name}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Assignments */}
+          <div>
+            <p className="text-gray-500 text-xs font-medium mb-1.5">
+              📝 Assignments ({userDetails.assignments.length})
+              {userDetails.errors?.assignments && <span className="text-red-400 ml-1">— fetch error</span>}
+            </p>
+            {userDetails.assignments.length === 0 ? (
+              <p className="text-gray-600 text-xs">No assignments</p>
+            ) : (
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {userDetails.assignments.map(a => (
+                  <div key={a.id} className="bg-gray-800 rounded-lg px-3 py-1.5">
+                    <p className={`text-xs ${a.status === 'done' ? 'line-through text-gray-500' : 'text-white'}`}>{a.title}</p>
+                    <p className="text-gray-600 text-xs">Due {a.due_date}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Grades */}
+          <div>
+            <p className="text-gray-500 text-xs font-medium mb-1.5">
+              📊 Grades ({userDetails.grades.length})
+              {userDetails.errors?.grades && <span className="text-red-400 ml-1">— fetch error</span>}
+            </p>
+            {userDetails.grades.length === 0 ? (
+              <p className="text-gray-600 text-xs">No grades</p>
+            ) : (
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {userDetails.grades.map(g => {
+                  const pct = ((g.score / g.max_score) * 100).toFixed(1)
+                  return (
+                    <div key={g.id} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-1.5">
+                      <p className="text-white text-xs">{g.title}</p>
+                      <p className={`text-xs font-medium ${parseFloat(pct) >= 90 ? 'text-emerald-400' : parseFloat(pct) >= 75 ? 'text-amber-400' : 'text-red-400'}`}>
+                        {pct}%
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Notes */}
+          <div>
+            <p className="text-gray-500 text-xs font-medium mb-1.5">
+              🗒️ Notes ({userDetails.notes.length})
+              {userDetails.errors?.notes && <span className="text-red-400 ml-1">— fetch error</span>}
+            </p>
+            {userDetails.notes.length === 0 ? (
+              <p className="text-gray-600 text-xs">No notes</p>
+            ) : (
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {userDetails.notes.map(n => (
+                  <div key={n.id} className="bg-gray-800 rounded-lg px-3 py-1.5">
+                    <p className="text-white text-xs">{n.title}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {selectedUser.email !== ADMIN_EMAIL && (
+            <button
+              onClick={onDeleteRequest}
+              className="w-full bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 text-red-400 text-xs font-medium py-2.5 rounded-lg transition mt-2"
+            >
+              🗑️ Delete User Data
+            </button>
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }

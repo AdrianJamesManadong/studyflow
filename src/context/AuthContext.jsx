@@ -21,6 +21,36 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
+  // ── Presence tracking ──────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return
+
+    async function updateLastSeen() {
+      await supabase
+        .from('user_presence')
+        .upsert(
+          { id: user.id, last_seen_at: new Date().toISOString() },
+          { onConflict: 'id' }
+        )
+    }
+
+    updateLastSeen() // fires on every mount / login
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') updateLastSeen()
+    }
+    const handlePageShow = () => updateLastSeen() // catches mobile bfcache restore
+
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('pageshow', handlePageShow)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('pageshow', handlePageShow)
+    }
+  }, [user?.id])
+  // ──────────────────────────────────────────────────────────────
+
   async function register(email, password, name) {
     const { data, error } = await supabase.auth.signUp({
       email,
