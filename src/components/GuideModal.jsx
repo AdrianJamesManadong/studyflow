@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const C = {
   bg:        '#080812',
@@ -18,14 +18,14 @@ const C = {
 }
 
 const FEATURES = [
-  { icon: '📚', title: 'Subjects',       desc: 'Add your subjects with color labels to organize everything.' },
-  { icon: '📝', title: 'Assignments',    desc: 'Track assignments with due dates, priority levels, and status.' },
-  { icon: '📊', title: 'Grades',         desc: 'Log your scores and automatically calculate your GPA and averages.' },
-  { icon: '🗒️', title: 'Notes',          desc: 'Write and organize notes per subject with a clean editor.' },
-  { icon: '📅', title: 'Calendar',       desc: 'See all your assignments and events in a monthly calendar view.' },
-  { icon: '⏱️', title: 'Pomodoro',       desc: 'Stay focused with a built-in Pomodoro timer with session tracking.' },
-  { icon: '🤖', title: 'AI Assistant',   desc: 'Ask your AI study assistant anything — it knows your data.' },
-  { icon: '🔔', title: 'Notifications',  desc: 'Get reminded when assignments are due soon.' },
+  { icon: '📚', title: 'Subjects',      desc: 'Add your subjects with color labels to organize everything.' },
+  { icon: '📝', title: 'Assignments',   desc: 'Track assignments with due dates, priority levels, and status.' },
+  { icon: '📊', title: 'Grades',        desc: 'Log your scores and automatically calculate your GPA and averages.' },
+  { icon: '🗒️', title: 'Notes',         desc: 'Write and organize notes per subject with a clean editor.' },
+  { icon: '📅', title: 'Calendar',      desc: 'See all your assignments and events in a monthly calendar view.' },
+  { icon: '⏱️', title: 'Pomodoro',      desc: 'Stay focused with a built-in Pomodoro timer with session tracking.' },
+  { icon: '🤖', title: 'AI Assistant',  desc: 'Ask your AI study assistant anything — it knows your data.' },
+  { icon: '🔔', title: 'Notifications', desc: 'Get reminded when assignments are due soon.' },
 ]
 
 const STEPS = [
@@ -38,6 +38,18 @@ const STEPS = [
 
 export default function GuideModal({ onClose }) {
   const [tab, setTab] = useState('features')
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 640)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 640)
+    window.addEventListener('resize', handleResize)
+    // Prevent body scroll when modal open
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      document.body.style.overflow = ''
+    }
+  }, [])
 
   return (
     <>
@@ -46,13 +58,19 @@ export default function GuideModal({ onClose }) {
           from { opacity: 0; transform: scale(.96) translateY(12px); }
           to   { opacity: 1; transform: scale(1)  translateY(0); }
         }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(100%); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
         .guide-modal-inner { animation: modalIn .25s cubic-bezier(.34,1.56,.64,1) both; }
+        .guide-modal-mobile { animation: slideUp .3s cubic-bezier(.34,1.56,.64,1) both; }
         .guide-scroll::-webkit-scrollbar { width: 4px; }
         .guide-scroll::-webkit-scrollbar-track { background: transparent; }
         .guide-scroll::-webkit-scrollbar-thumb { background: ${C.indigo}44; border-radius: 4px; }
         .guide-close-btn:hover { color: ${C.text} !important; }
         .guide-got-it:hover   { opacity: .85 !important; }
         .guide-feat-card:hover { background: ${C.borderHi} !important; }
+        .guide-tab-btn:hover  { color: ${C.textSoft} !important; }
       `}</style>
 
       {/* Backdrop */}
@@ -60,27 +78,28 @@ export default function GuideModal({ onClose }) {
         onClick={onClose}
         style={{
           position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,.72)',
+          background: 'rgba(0,0,0,.75)',
           backdropFilter: 'blur(6px)',
           zIndex: 50,
           display: 'flex',
-          alignItems: 'center',
+          alignItems: isMobile ? 'flex-end' : 'center',
           justifyContent: 'center',
-          padding: 16,
+          padding: isMobile ? 0 : 16,
           fontFamily: "'Plus Jakarta Sans', sans-serif",
         }}
       >
         {/* Modal */}
         <div
-          className="guide-modal-inner"
+          className={isMobile ? 'guide-modal-mobile' : 'guide-modal-inner'}
           onClick={e => e.stopPropagation()}
           style={{
             background: C.surface,
             border: `1px solid ${C.border}`,
-            borderRadius: 20,
+            borderRadius: isMobile ? '20px 20px 0 0' : 20,
             width: '100%',
-            maxWidth: 640,
-            maxHeight: '88vh',
+            maxWidth: isMobile ? '100%' : 640,
+            // On mobile: takes up to 90% of screen height; on desktop: capped at 88vh
+            maxHeight: isMobile ? '90vh' : '88vh',
             display: 'flex',
             flexDirection: 'column',
             boxShadow: `0 40px 100px rgba(0,0,0,.6), 0 0 0 1px ${C.indigo}18`,
@@ -90,15 +109,22 @@ export default function GuideModal({ onClose }) {
           {/* Top accent line */}
           <div style={{ height: 3, background: `linear-gradient(90deg,${C.indigo},${C.violet},${C.indigoFg})`, flexShrink: 0 }} />
 
+          {/* Mobile drag handle */}
+          {isMobile && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 4px' }}>
+              <div style={{ width: 36, height: 4, borderRadius: 4, background: C.border }} />
+            </div>
+          )}
+
           {/* Header */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '20px 28px',
+            padding: isMobile ? '12px 20px 12px' : '20px 28px',
             borderBottom: `1px solid ${C.border}`,
             flexShrink: 0,
           }}>
             <div>
-              <h2 style={{ fontSize: 18, fontWeight: 800, color: C.text, letterSpacing: '-0.4px', margin: 0 }}>
+              <h2 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, color: C.text, letterSpacing: '-0.4px', margin: 0 }}>
                 How StudyFlow Works
               </h2>
               <p style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
@@ -114,13 +140,19 @@ export default function GuideModal({ onClose }) {
                 transition: 'color .2s',
                 fontFamily: 'inherit',
                 lineHeight: 1,
-                padding: 4,
+                padding: 6,
+                borderRadius: 6,
               }}
             >✕</button>
           </div>
 
           {/* Tabs */}
-          <div style={{ display: 'flex', gap: 8, padding: '16px 28px 0', flexShrink: 0 }}>
+          <div style={{
+            display: 'flex',
+            gap: 8,
+            padding: isMobile ? '12px 20px 0' : '16px 28px 0',
+            flexShrink: 0,
+          }}>
             {[
               { key: 'features', label: '✨ Features' },
               { key: 'flow',     label: '🚀 Getting Started' },
@@ -129,9 +161,9 @@ export default function GuideModal({ onClose }) {
                 key={t.key}
                 onClick={() => setTab(t.key)}
                 style={{
-                  padding: '7px 16px',
+                  padding: isMobile ? '6px 14px' : '7px 16px',
                   borderRadius: 8,
-                  fontSize: 13,
+                  fontSize: isMobile ? 12 : 13,
                   fontWeight: 600,
                   fontFamily: 'inherit',
                   cursor: 'pointer',
@@ -140,6 +172,7 @@ export default function GuideModal({ onClose }) {
                   background: tab === t.key ? C.indigo : C.surface2,
                   color:      tab === t.key ? '#fff'   : C.muted,
                   boxShadow:  tab === t.key ? `0 4px 14px ${C.indigo}44` : 'none',
+                  flex: isMobile ? 1 : 'unset',
                 }}
               >{t.label}</button>
             ))}
@@ -148,7 +181,11 @@ export default function GuideModal({ onClose }) {
           {/* Scrollable content */}
           <div
             className="guide-scroll"
-            style={{ flex: 1, overflowY: 'auto', padding: '20px 28px' }}
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: isMobile ? '16px 20px' : '20px 28px',
+            }}
           >
             {tab === 'features' && (
               <div>
@@ -157,7 +194,7 @@ export default function GuideModal({ onClose }) {
                 </p>
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                  gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(240px, 1fr))',
                   gap: 10,
                 }}>
                   {FEATURES.map(f => (
@@ -194,7 +231,6 @@ export default function GuideModal({ onClose }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   {STEPS.map((s, i) => (
                     <div key={s.step} style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                      {/* Step number + connector line */}
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
                         <div style={{
                           width: 32, height: 32, borderRadius: '50%',
@@ -208,8 +244,6 @@ export default function GuideModal({ onClose }) {
                           <div style={{ width: 2, flex: 1, minHeight: 24, background: C.border, margin: '4px 0' }} />
                         )}
                       </div>
-
-                      {/* Text */}
                       <div style={{ paddingBottom: i < STEPS.length - 1 ? 16 : 0, paddingTop: 4 }}>
                         <p style={{ fontSize: 13, fontWeight: 700, color: C.text, margin: 0 }}>{s.title}</p>
                         <p style={{ fontSize: 12, color: C.muted, marginTop: 3, lineHeight: 1.6 }}>{s.desc}</p>
@@ -218,7 +252,6 @@ export default function GuideModal({ onClose }) {
                   ))}
                 </div>
 
-                {/* Pro tip */}
                 <div style={{
                   background: `${C.indigo}12`,
                   border: `1px solid ${C.indigo}30`,
@@ -239,15 +272,21 @@ export default function GuideModal({ onClose }) {
 
           {/* Footer */}
           <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '16px 28px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: isMobile ? 'center' : 'space-between',
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: isMobile ? 12 : 0,
+            padding: isMobile ? '16px 20px 24px' : '16px 28px',
             borderTop: `1px solid ${C.border}`,
             background: C.surface2,
             flexShrink: 0,
           }}>
-            <p style={{ fontSize: 11, color: C.muted, margin: 0 }}>
-              Built by Adrian James D. Manadong · New Era University
-            </p>
+            {!isMobile && (
+              <p style={{ fontSize: 11, color: C.muted, margin: 0 }}>
+                Built by Adrian James D. Manadong · New Era University
+              </p>
+            )}
             <button
               onClick={onClose}
               className="guide-got-it"
@@ -256,15 +295,21 @@ export default function GuideModal({ onClose }) {
                 color: '#fff',
                 border: 'none',
                 borderRadius: 8,
-                padding: '9px 20px',
-                fontSize: 13,
+                padding: isMobile ? '12px 0' : '9px 20px',
+                width: isMobile ? '100%' : 'auto',
+                fontSize: 14,
                 fontWeight: 700,
                 cursor: 'pointer',
                 fontFamily: 'inherit',
                 transition: 'opacity .2s',
                 boxShadow: `0 4px 14px ${C.indigo}44`,
               }}
-            >Got it!</button>
+            >Got it! 👍</button>
+            {isMobile && (
+              <p style={{ fontSize: 11, color: C.muted, margin: 0, textAlign: 'center' }}>
+                Built by Adrian James D. Manadong · New Era University
+              </p>
+            )}
           </div>
         </div>
       </div>
