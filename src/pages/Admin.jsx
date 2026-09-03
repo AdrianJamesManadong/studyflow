@@ -2,8 +2,18 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
 import { Navigate } from 'react-router-dom'
+import { useFeedback } from '../hooks/useFeedback'
 
 const ADMIN_EMAIL = 'adrianjames082506@gmail.com'
+
+const FEEDBACK_CATEGORIES = [
+  { id: 'general', label: 'General', style: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
+  { id: 'bug',     label: 'Bug',     style: 'bg-red-500/10 text-red-400 border-red-500/20' },
+  { id: 'feature', label: 'Feature', style: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+]
+function feedbackCategoryMeta(id) {
+  return FEEDBACK_CATEGORIES.find(c => c.id === id) || FEEDBACK_CATEGORIES[0]
+}
 
 function UserAvatar({ user, size = 'sm' }) {
   const [imgError, setImgError] = useState(false)
@@ -45,6 +55,25 @@ export default function Admin() {
   const [annSuccess, setAnnSuccess] = useState(false)
   const [editingAnn, setEditingAnn] = useState(null)
   const [confirmDeleteAnn, setConfirmDeleteAnn] = useState(null)
+
+  // ── Feedback moderation state ──
+  const {
+    posts: feedbackPosts,
+    comments: feedbackComments,
+    loading: feedbackLoading,
+    error: feedbackError,
+    fetchComments: fetchFeedbackComments,
+    addComment: addFeedbackComment,
+    deletePost: deleteFeedbackPost,
+    deleteComment: deleteFeedbackComment,
+  } = useFeedback()
+  const [feedbackFilter, setFeedbackFilter] = useState('all')
+  const [expandedFeedbackId, setExpandedFeedbackId] = useState(null)
+  const [adminReplyDrafts, setAdminReplyDrafts] = useState({})
+  const [adminReplyPosting, setAdminReplyPosting] = useState(null)
+  const [confirmDeleteFeedbackPost, setConfirmDeleteFeedbackPost] = useState(null)
+  const [deletingFeedbackPost, setDeletingFeedbackPost] = useState(false)
+  const [confirmDeleteFeedbackComment, setConfirmDeleteFeedbackComment] = useState(null)
 
   if (user?.email !== ADMIN_EMAIL) {
     return <Navigate to="/dashboard" replace />
@@ -202,10 +231,49 @@ export default function Admin() {
     return null
   }
 
+  // ── Feedback moderation handlers ──
+  async function toggleFeedbackExpand(postId) {
+    if (expandedFeedbackId === postId) { setExpandedFeedbackId(null); return }
+    setExpandedFeedbackId(postId)
+    if (!feedbackComments[postId]) await fetchFeedbackComments(postId)
+  }
+
+  async function handleAdminReply(postId) {
+    const text = (adminReplyDrafts[postId] || '').trim()
+    if (!text) return
+    setAdminReplyPosting(postId)
+    try {
+      await addFeedbackComment(postId, { content: text, isAnonymous: false, authorName: 'StudyFlow Admin', isAdmin: true })
+      setAdminReplyDrafts(prev => ({ ...prev, [postId]: '' }))
+    } finally {
+      setAdminReplyPosting(null)
+    }
+  }
+
+  async function handleDeleteFeedbackPost() {
+    setDeletingFeedbackPost(true)
+    try {
+      await deleteFeedbackPost(confirmDeleteFeedbackPost.id)
+      setConfirmDeleteFeedbackPost(null)
+    } finally {
+      setDeletingFeedbackPost(false)
+    }
+  }
+
+  async function handleDeleteFeedbackComment() {
+    const { postId, commentId } = confirmDeleteFeedbackComment
+    await deleteFeedbackComment(postId, commentId)
+    setConfirmDeleteFeedbackComment(null)
+  }
+
   const filtered = users.filter(u =>
     u.email?.toLowerCase().includes(search.toLowerCase()) ||
     u.name?.toLowerCase().includes(search.toLowerCase())
   )
+
+  const filteredFeedback = feedbackFilter === 'all'
+    ? feedbackPosts
+    : feedbackPosts.filter(p => p.category === feedbackFilter)
 
   const annTypeStyles = {
     info:    'bg-indigo-500/10 border-indigo-500/30 text-indigo-400',
@@ -255,15 +323,16 @@ export default function Admin() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 bg-gray-900 border border-gray-800 rounded-xl p-1">
+      <div className="flex gap-2 bg-gray-900 border border-gray-800 rounded-xl p-1 overflow-x-auto">
         {[
           { key: 'users',         label: '👥 Users' },
           { key: 'announcements', label: '📢 Announcements' },
+          { key: 'feedback',      label: '💬 Feedback' },
         ].map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap
               ${activeTab === tab.key ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
           >
             {tab.label}
@@ -370,7 +439,6 @@ export default function Admin() {
                     </div>
                   ) : (
                     filtered.map(u => (
-                      /* FIX: changed from <button> to <div> to prevent nested button hydration error */
                       <div
                         key={u.id}
                         role="button"
@@ -382,7 +450,6 @@ export default function Admin() {
                           ${u.email === ADMIN_EMAIL ? 'bg-indigo-600/5' : ''}`}
                       >
                         <div className="flex items-center justify-between gap-3">
-                          {/* Left: avatar + name */}
                           <div className="flex items-center gap-3 min-w-0">
                             <UserAvatar user={u} size="sm" />
                             <div className="min-w-0">
@@ -399,7 +466,6 @@ export default function Admin() {
                             </div>
                           </div>
 
-                          {/* Right: stat pills + delete */}
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <div className="flex gap-1.5 flex-wrap justify-end">
                               <span className="text-sky-400 text-xs font-medium bg-sky-400/10 px-1.5 py-0.5 rounded-md">{u.subject_count}S</span>
@@ -447,14 +513,11 @@ export default function Admin() {
       {/* ── Mobile bottom sheet for user detail ── */}
       {selectedUser && (
         <div className="lg:hidden">
-          {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black/60 z-40 transition-opacity"
             onClick={() => { setSelectedUser(null); setUserDetails(null) }}
           />
-          {/* Sheet */}
           <div className="fixed bottom-0 left-0 right-0 z-50 bg-gray-950 border-t border-gray-800 rounded-t-2xl max-h-[80vh] overflow-y-auto">
-            {/* Drag handle */}
             <div className="flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 bg-gray-700 rounded-full" />
             </div>
@@ -590,6 +653,127 @@ export default function Admin() {
         </div>
       )}
 
+      {/* ─── Feedback Tab ─── */}
+      {activeTab === 'feedback' && (
+        <div className="space-y-4">
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setFeedbackFilter('all')}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${feedbackFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+            >
+              All
+            </button>
+            {FEEDBACK_CATEGORIES.map(c => (
+              <button
+                key={c.id}
+                onClick={() => setFeedbackFilter(c.id)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize transition ${feedbackFilter === c.id ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+
+          {feedbackError && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2.5 text-xs text-red-400">⚠️ {feedbackError}</div>
+          )}
+
+          {feedbackLoading ? (
+            <div className="text-center py-12">
+              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
+            </div>
+          ) : filteredFeedback.length === 0 ? (
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center">
+              <p className="text-4xl mb-2">💬</p>
+              <p className="text-gray-500 text-sm">No feedback posts yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredFeedback.map(post => {
+                const meta = feedbackCategoryMeta(post.category)
+                const displayName = post.is_anonymous ? 'Anonymous' : (post.author_name || 'Unknown')
+                const isExpanded = expandedFeedbackId === post.id
+                return (
+                  <div key={post.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-white text-sm font-medium">{displayName}</p>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border capitalize ${meta.style}`}>{meta.label}</span>
+                        </div>
+                        <p className="text-gray-500 text-xs mt-0.5">{timeAgo(post.created_at)}</p>
+                      </div>
+                      <button
+                        onClick={() => setConfirmDeleteFeedbackPost(post)}
+                        className="text-gray-600 hover:text-red-400 text-xs transition flex-shrink-0"
+                        title="Delete post"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+
+                    <p className="text-gray-300 text-sm mt-2 whitespace-pre-wrap">{post.content}</p>
+
+                    <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-800/70">
+                      <span className="text-xs text-gray-500">❤️ {post.like_count}</span>
+                      <button
+                        onClick={() => toggleFeedbackExpand(post.id)}
+                        className="text-xs text-gray-500 hover:text-indigo-400 transition"
+                      >
+                        💬 {post.comment_count > 0 ? post.comment_count : 'View'} {isExpanded ? '▲' : '▼'}
+                      </button>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="mt-3 pt-3 border-t border-gray-800/70 space-y-2">
+                        {(feedbackComments[post.id] ?? []).map(c => (
+                          <div key={c.id} className="flex items-start justify-between gap-2 bg-gray-800/60 rounded-lg px-3 py-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="text-xs text-white font-medium">
+                                  {c.is_admin ? 'StudyFlow Admin' : c.is_anonymous ? 'Anonymous' : (c.author_name || 'Unknown')}
+                                </p>
+                                {c.is_admin && (
+                                  <span className="text-[9px] bg-indigo-600 text-white px-1.5 py-0.5 rounded-full">Admin</span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-300 mt-0.5">{c.content}</p>
+                            </div>
+                            <button
+                              onClick={() => setConfirmDeleteFeedbackComment({ postId: post.id, commentId: c.id })}
+                              className="text-gray-600 hover:text-red-400 text-[10px] transition flex-shrink-0"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+
+                        <div className="flex items-center gap-2 pt-1">
+                          <input
+                            value={adminReplyDrafts[post.id] || ''}
+                            onChange={e => setAdminReplyDrafts(prev => ({ ...prev, [post.id]: e.target.value }))}
+                            onKeyDown={e => e.key === 'Enter' && handleAdminReply(post.id)}
+                            placeholder="Reply as StudyFlow Admin..."
+                            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition"
+                          />
+                          <button
+                            onClick={() => handleAdminReply(post.id)}
+                            disabled={!adminReplyDrafts[post.id]?.trim() || adminReplyPosting === post.id}
+                            className="text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-3 py-2 rounded-lg transition whitespace-nowrap"
+                          >
+                            {adminReplyPosting === post.id ? '…' : '📢 Reply'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Confirm Delete User Modal */}
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
@@ -632,6 +816,42 @@ export default function Admin() {
         </div>
       )}
 
+      {/* Confirm Delete Feedback Post Modal */}
+      {confirmDeleteFeedbackPost && (
+        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-t-2xl sm:rounded-2xl p-6 w-full sm:max-w-sm space-y-4">
+            <div className="text-center">
+              <p className="text-3xl mb-3">🗑️</p>
+              <h3 className="text-white font-semibold text-lg">Delete Feedback Post?</h3>
+              <p className="text-gray-400 text-sm mt-1">This will remove the post and all its comments. This cannot be undone.</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeleteFeedbackPost(null)} disabled={deletingFeedbackPost} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-3 sm:py-2 text-sm transition disabled:opacity-40">Cancel</button>
+              <button onClick={handleDeleteFeedbackPost} disabled={deletingFeedbackPost} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-3 sm:py-2 text-sm transition disabled:opacity-40">
+                {deletingFeedbackPost ? 'Deleting…' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Delete Feedback Comment Modal */}
+      {confirmDeleteFeedbackComment && (
+        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-t-2xl sm:rounded-2xl p-6 w-full sm:max-w-sm space-y-4">
+            <div className="text-center">
+              <p className="text-3xl mb-3">🗑️</p>
+              <h3 className="text-white font-semibold text-lg">Delete Comment?</h3>
+              <p className="text-gray-400 text-sm mt-1">This cannot be undone.</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeleteFeedbackComment(null)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-3 sm:py-2 text-sm transition">Cancel</button>
+              <button onClick={handleDeleteFeedbackComment} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-3 sm:py-2 text-sm transition">Yes, Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
@@ -668,7 +888,6 @@ function UserDetailPanel({ selectedUser, userDetails, userDetailsLoading, onClos
       ) : userDetails ? (
         <div className="space-y-3">
 
-          {/* Subjects */}
           <div>
             <p className="text-gray-500 text-xs font-medium mb-1.5">
               📚 Subjects ({userDetails.subjects.length})
@@ -691,7 +910,6 @@ function UserDetailPanel({ selectedUser, userDetails, userDetailsLoading, onClos
             )}
           </div>
 
-          {/* Assignments */}
           <div>
             <p className="text-gray-500 text-xs font-medium mb-1.5">
               📝 Assignments ({userDetails.assignments.length})
@@ -711,7 +929,6 @@ function UserDetailPanel({ selectedUser, userDetails, userDetailsLoading, onClos
             )}
           </div>
 
-          {/* Grades */}
           <div>
             <p className="text-gray-500 text-xs font-medium mb-1.5">
               📊 Grades ({userDetails.grades.length})
@@ -736,7 +953,6 @@ function UserDetailPanel({ selectedUser, userDetails, userDetailsLoading, onClos
             )}
           </div>
 
-          {/* Notes */}
           <div>
             <p className="text-gray-500 text-xs font-medium mb-1.5">
               🗒️ Notes ({userDetails.notes.length})

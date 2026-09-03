@@ -19,6 +19,7 @@ import Admin from './pages/Admin'
 import ResetPassword from './pages/ResetPassword'
 import Home from './pages/Home'
 import Privacy from "./pages/Privacy";
+import Feedback from './pages/Feedback'
 
 async function pingLastSeen() {
   const { data: { session } } = await supabase.auth.getSession()
@@ -93,6 +94,7 @@ export default function App() {
           <Route path="calendar" element={<Calendar />} />
           <Route path="pomodoro" element={<Pomodoro />} />
           <Route path="ai" element={<AIAssistant />} />
+          <Route path="feedback" element={<Feedback />} />
           <Route path="profile" element={<Profile />} />
           <Route path="about" element={<About />} />
           <Route path="admin" element={<Admin />} />

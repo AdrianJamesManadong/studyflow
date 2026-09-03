@@ -19,6 +19,7 @@ export default function Sidebar() {
     { label: 'Calendar', icon: '📅', path: '/dashboard/calendar' },
     { label: 'Pomodoro', icon: '⏱️', path: '/dashboard/pomodoro' },
     { label: 'AI Assistant', icon: '🤖', path: '/dashboard/ai' },
+    { label: 'Feedback', icon: '💬', path: '/dashboard/feedback' },
     { label: 'About', icon: '✨', path: '/dashboard/about' },
     { label: 'Profile', icon: '👤', path: '/dashboard/profile' },
     ...(user?.email === ADMIN_EMAIL ? [{ label: 'Admin', icon: '🛡️', path: '/dashboard/admin' }] : []),

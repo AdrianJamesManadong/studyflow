@@ -11,6 +11,12 @@ const priorityStyles = {
   high:   'bg-red-500/10 text-red-400 border-red-500/20',
 }
 
+const priorityDot = {
+  low:    'bg-emerald-400',
+  medium: 'bg-amber-400',
+  high:   'bg-red-400',
+}
+
 function formatTime(time) {
   if (!time) return ''
   const [h, m] = time.split(':')
@@ -31,25 +37,27 @@ function isOverdue(dueDate, status) {
 const EMPTY_FORM = { title: '', subjectId: '', dueDate: '', dueTime: '', priority: 'medium', notes: '' }
 
 export default function Assignments() {
-  // Fix: destructure loading from useAssignments
   const { assignments, addAssignment, editAssignment, deleteAssignment, toggleStatus, loading: assignmentsLoading } = useAssignments()
   const { subjects, loading: subjectsLoading } = useSubjects()
 
-  const [showModal, setShowModal]       = useState(false)
-  const [editing, setEditing]           = useState(null)
-  const [filter, setFilter]             = useState('all')
+  const [showModal, setShowModal]         = useState(false)
+  const [editing, setEditing]             = useState(null)
+  const [filter, setFilter]               = useState('all')
   const [confirmDelete, setConfirmDelete] = useState(null)
-  const [form, setForm]                 = useState(EMPTY_FORM)
-  const [saving, setSaving]             = useState(false)   // Fix: track in-flight saves
-  const [deleting, setDeleting]         = useState(false)   // Fix: track in-flight deletes
-  const [error, setError]               = useState('')      // Fix: surface errors in UI
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
+  const [form, setForm]                   = useState(EMPTY_FORM)
+  const [saving, setSaving]               = useState(false)
+  const [deleting, setDeleting]           = useState(false)
+  const [deletingAll, setDeletingAll]     = useState(false)
+  const [error, setError]                 = useState('')
 
-  // Fix: Escape key closes both modals — consistent with Subjects.jsx
+  // Escape key closes any open modal
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== 'Escape') return
       setShowModal(false)
       setConfirmDelete(null)
+      setConfirmDeleteAll(false)
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -76,7 +84,6 @@ export default function Assignments() {
     setShowModal(true)
   }
 
-  // Fix: async, awaited, with saving state + error handling
   async function handleSave() {
     if (!form.title.trim() || !form.dueDate) return
     setSaving(true)
@@ -95,7 +102,6 @@ export default function Assignments() {
     }
   }
 
-  // Fix: async, awaited, with deleting state + error handling
   async function handleDelete() {
     setDeleting(true)
     setError('')
@@ -109,32 +115,54 @@ export default function Assignments() {
     }
   }
 
+  async function handleDeleteAll() {
+    setDeletingAll(true)
+    setError('')
+    try {
+      await Promise.all(filtered.map(a => deleteAssignment(a.id)))
+      setConfirmDeleteAll(false)
+    } catch (err) {
+      setError(err.message || 'Failed to delete some assignments. Please try again.')
+    } finally {
+      setDeletingAll(false)
+    }
+  }
+
   const filtered = assignments.filter(a => {
     if (filter === 'pending') return a.status !== 'done'
     if (filter === 'done')    return a.status === 'done'
     return true
   }).sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
 
-  // Fix: actually use the imported skeleton while loading
   if (assignmentsLoading || subjectsLoading) return <AssignmentsSkeleton />
 
   return (
     <div className="space-y-6">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-white">Assignments</h2>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Assignments</h2>
           <p className="text-gray-400 text-sm mt-1">
             {assignments.filter(a => a.status !== 'done').length} pending
           </p>
         </div>
-        <button
-          onClick={openAdd}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
-        >
-          + Add Assignment
-        </button>
+        <div className="flex items-center gap-2">
+          {filtered.length > 0 && (
+            <button
+              onClick={() => setConfirmDeleteAll(true)}
+              className="text-red-400/80 hover:text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 hover:border-red-500/30 text-sm font-medium px-4 py-2 rounded-xl transition"
+            >
+              Delete all
+            </button>
+          )}
+          <button
+            onClick={openAdd}
+            className="bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-xl transition shadow-lg shadow-indigo-900/30"
+          >
+            + Add Assignment
+          </button>
+        </div>
       </div>
 
       {/* Filter tabs */}
@@ -143,17 +171,25 @@ export default function Assignments() {
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize transition
-              ${filter === f ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+            className={`px-4 py-1.5 rounded-xl text-sm font-medium capitalize transition
+              ${filter === f ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/30' : 'bg-gray-900/70 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'}`}
           >
             {f}
           </button>
         ))}
       </div>
 
+      {/* Top-level error (e.g. from delete-all) */}
+      {error && !showModal && !confirmDelete && !confirmDeleteAll && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2.5 text-xs text-red-400 flex items-center justify-between">
+          <span>⚠️ {error}</span>
+          <button onClick={() => setError('')} className="hover:text-red-300 transition">✕</button>
+        </div>
+      )}
+
       {/* Empty state */}
       {filtered.length === 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center">
+        <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-12 text-center">
           <p className="text-4xl mb-3">📝</p>
           <p className="text-white font-medium mb-1">No assignments here</p>
           <p className="text-gray-400 text-sm">Add one using the button above.</p>
@@ -168,7 +204,7 @@ export default function Assignments() {
           return (
             <div
               key={a.id}
-              className={`bg-gray-900 border rounded-xl p-4 flex items-start gap-4 transition
+              className={`bg-gray-900/70 border rounded-2xl p-4 flex items-start gap-4 transition hover:border-gray-700
                 ${a.status === 'done' ? 'border-gray-800 opacity-60' : overdue ? 'border-red-500/30' : 'border-gray-800'}`}
             >
               <button
@@ -191,10 +227,11 @@ export default function Assignments() {
                       {subject.name}
                     </span>
                   )}
-                  <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${priorityStyles[a.priority]}`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full border capitalize flex items-center gap-1.5 ${priorityStyles[a.priority]}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${priorityDot[a.priority]}`} />
                     {a.priority}
                   </span>
-                  <span className={`text-xs ${overdue ? 'text-red-400' : 'text-gray-500'}`}>
+                  <span className={`text-xs ${overdue ? 'text-red-400 font-medium' : 'text-gray-500'}`}>
                     {overdue ? '⚠ Overdue · ' : ''}
                     Due {new Date(a.due_date).toLocaleDateString()}
                     {a.due_time && ` · ${formatTime(a.due_time)}`}
@@ -203,7 +240,7 @@ export default function Assignments() {
                 {a.notes && <p className="text-gray-500 text-xs mt-1">{a.notes}</p>}
               </div>
 
-              <div className="flex gap-2 flex-shrink-0">
+              <div className="flex gap-3 flex-shrink-0">
                 <button onClick={() => openEdit(a)}         className="text-gray-500 hover:text-white text-xs transition">Edit</button>
                 <button onClick={() => setConfirmDelete(a)} className="text-gray-500 hover:text-red-400 text-xs transition">Delete</button>
               </div>
@@ -214,9 +251,8 @@ export default function Assignments() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        // Fix: backdrop click closes modal
         <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={(e) => e.target === e.currentTarget && setShowModal(false)}
         >
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-md space-y-4">
@@ -232,7 +268,7 @@ export default function Assignments() {
                 onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                 onKeyDown={e => e.key === 'Enter' && handleSave()}
                 placeholder="e.g. Chapter 5 Report"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition"
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition"
               />
             </div>
 
@@ -241,7 +277,7 @@ export default function Assignments() {
               <select
                 value={form.subjectId}
                 onChange={e => setForm(f => ({ ...f, subjectId: e.target.value }))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 transition"
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 transition"
               >
                 <option value="">No subject</option>
                 {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -255,7 +291,7 @@ export default function Assignments() {
                   type="date"
                   value={form.dueDate}
                   onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 transition"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 transition"
                 />
               </div>
               <div>
@@ -264,7 +300,7 @@ export default function Assignments() {
                   type="time"
                   value={form.dueTime}
                   onChange={e => setForm(f => ({ ...f, dueTime: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 transition"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 transition"
                 />
               </div>
             </div>
@@ -274,7 +310,7 @@ export default function Assignments() {
               <select
                 value={form.priority}
                 onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 transition"
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 transition"
               >
                 {PRIORITIES.map(p => <option key={p} value={p} className="capitalize">{p}</option>)}
               </select>
@@ -287,11 +323,10 @@ export default function Assignments() {
                 onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                 placeholder="Any extra details..."
                 rows={2}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition resize-none"
+                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition resize-none"
               />
             </div>
 
-            {/* Fix: show error in modal */}
             {error && (
               <p className="text-red-400 text-xs">{error}</p>
             )}
@@ -300,15 +335,14 @@ export default function Assignments() {
               <button
                 onClick={() => setShowModal(false)}
                 disabled={saving}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition disabled:opacity-40"
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl py-2 text-sm transition disabled:opacity-40"
               >
                 Cancel
               </button>
-              {/* Fix: disabled while saving, shows saving state */}
               <button
                 onClick={handleSave}
                 disabled={!form.title.trim() || !form.dueDate || saving}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg py-2 text-sm transition"
+                className="flex-1 bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-2 text-sm transition"
               >
                 {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Assignment'}
               </button>
@@ -317,11 +351,10 @@ export default function Assignments() {
         </div>
       )}
 
-      {/* Confirm Delete Modal */}
+      {/* Confirm Delete (single) Modal */}
       {confirmDelete && (
-        // Fix: backdrop click closes modal
         <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}
         >
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
@@ -338,17 +371,57 @@ export default function Assignments() {
               <button
                 onClick={() => setConfirmDelete(null)}
                 disabled={deleting}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition disabled:opacity-40"
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl py-2 text-sm transition disabled:opacity-40"
               >
                 Cancel
               </button>
-              {/* Fix: awaited with deleting state */}
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-2 text-sm transition disabled:opacity-40"
+                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl py-2 text-sm transition disabled:opacity-40"
               >
                 {deleting ? 'Deleting…' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Delete All Modal */}
+      {confirmDeleteAll && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={(e) => e.target === e.currentTarget && setConfirmDeleteAll(false)}
+        >
+          <div className="bg-gray-900 border border-red-500/20 rounded-2xl p-6 w-full max-w-sm space-y-4">
+            <div className="text-center">
+              <p className="text-3xl mb-3">⚠️</p>
+              <h3 className="text-white font-semibold text-lg">
+                Delete {filtered.length} assignment{filtered.length !== 1 ? 's' : ''}?
+              </h3>
+              <p className="text-gray-400 text-sm mt-1">
+                This will permanently delete{' '}
+                <span className="text-white font-medium">
+                  {filter === 'all' ? 'all' : `all ${filter}`} assignment{filtered.length !== 1 ? 's' : ''}
+                </span>{' '}
+                currently shown. This cannot be undone.
+              </p>
+              {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDeleteAll(false)}
+                disabled={deletingAll}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl py-2 text-sm transition disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                disabled={deletingAll}
+                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl py-2 text-sm transition disabled:opacity-40"
+              >
+                {deletingAll ? 'Deleting…' : `Yes, Delete All`}
               </button>
             </div>
           </div>
