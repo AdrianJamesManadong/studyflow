@@ -2,26 +2,97 @@ import { useState, useEffect, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../hooks/useTheme'
 import { supabase } from '../utils/supabase'   // ← FIXED: import directly
 import GuideModal from '../components/GuideModal'
+import {
+  Sparkles,
+  FolderKanban,
+  ClipboardList,
+  BarChart3,
+  Bot,
+  Gift,
+  Lock,
+  Calendar,
+  GraduationCap,
+  Mail,
+  MailCheck,
+  Clock,
+  FolderOpen,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Check,
+  X,
+  Sun,
+  Moon,
+} from 'lucide-react'
 
-/* ─── Design tokens ───────────────────────────────────────────── */
-const C = {
-  bg:        '#080812',
-  surface:   '#0f0f1e',
-  surface2:  '#13132a',
-  border:    '#1c1c38',
-  borderHi:  '#2e2e58',
-  indigo:    '#5b50f0',
-  indigoMid: '#7c74f5',
-  indigoFg:  '#a5a0fa',
-  emerald:   '#10b981',
-  amber:     '#f59e0b',
-  violet:    '#8b5cf6',
-  text:      '#eeeef8',
-  textSoft:  '#b0b0cc',
-  muted:     '#5a5a7a',
+/* ─── Design tokens — StudyFlow Professional Palette ─────────────
+   Light + dark palettes, selected at render time from the persisted
+   theme (same source of truth as the dashboard / Home page).        */
+const C_LIGHT = {
+  bg:        '#F8F7FC',
+  surface:   '#FFFFFF',
+  surface2:  '#EEF2FF',
+  border:    '#E6E4F2',
+  borderHi:  '#C7D2FE',
+  indigo:    '#4F46E5',
+  indigoMid: '#7C3AED',
+  indigoFg:  '#4F46E5',
+  accent:    '#A78BFA',
+  emerald:   '#22C55E',
+  amber:     '#F59E0B',
+  violet:    '#7C3AED',
+  text:      '#1F2937',
+  textSoft:  '#4B5563',
+  muted:     '#6B7280',
+  error:     '#EF4444',
+  errorText: '#DC2626',
+  navBg:     'rgba(255,255,255,.85)',
+  shadowSoft:'rgba(31,41,55,0.04)',
+  overlay:   'rgba(31,41,55,.45)',
 }
+
+const C_DARK = {
+  bg:        '#0B0D12',
+  surface:   '#151822',
+  surface2:  '#1C1F2E',
+  border:    '#262A38',
+  borderHi:  '#3730A3',
+  indigo:    '#6366F1',
+  indigoMid: '#8B5CF6',
+  indigoFg:  '#818CF8',
+  accent:    '#A78BFA',
+  emerald:   '#34D399',
+  amber:     '#FBBF24',
+  violet:    '#A78BFA',
+  text:      '#F3F4F6',
+  textSoft:  '#CBD5E1',
+  muted:     '#94A3B8',
+  error:     '#F87171',
+  errorText: '#FCA5A5',
+  navBg:     'rgba(11,13,18,.85)',
+  shadowSoft:'rgba(0,0,0,0.35)',
+  overlay:   'rgba(0,0,0,.55)',
+}
+
+/* ─── Shared gradient-text style ────────────────────────────────────
+   Both the standard and Webkit-prefixed background-clip properties
+   are required — without both plus a transparent color fallback, the
+   gradient can paint as a solid block instead of clipping to text.   */
+const gradientText = (C) => ({
+  background: `linear-gradient(105deg,${C.indigo},${C.violet})`,
+  WebkitBackgroundClip: 'text',
+  backgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  color: 'transparent',
+  display: 'inline-block',
+})
 
 /* ─── Legal content ───────────────────────────────────────────── */
 const LEGAL = {
@@ -95,8 +166,8 @@ const LEGAL = {
   },
 }
 
-/* ─── Legal Modal Component ───────────────────────────────────── */
-function LegalModal({ type, onClose }) {
+/* ─── Legal Modal Component (now themed via C prop) ─────────────── */
+function LegalModal({ type, onClose, C }) {
   const content = LEGAL[type]
 
   useEffect(() => {
@@ -115,7 +186,7 @@ function LegalModal({ type, onClose }) {
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(4,4,12,.80)',
+        background: C.overlay,
         backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 20,
@@ -145,7 +216,7 @@ function LegalModal({ type, onClose }) {
           maxHeight: '82vh',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: `0 40px 100px rgba(0,0,0,.6), 0 0 0 1px ${C.indigo}18`,
+          boxShadow: `0 40px 90px ${C.shadowSoft}, 0 0 0 1px ${C.indigo}12`,
           animation: 'legalSlideUp .22s cubic-bezier(.22,1,.36,1) both',
           overflow: 'hidden',
         }}
@@ -176,11 +247,10 @@ function LegalModal({ type, onClose }) {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer',
               color: C.muted,
-              fontSize: 16,
               transition: 'background .2s, border-color .2s, color .2s',
               flexShrink: 0,
             }}
-          >✕</button>
+          ><X size={16} /></button>
         </div>
 
         <div
@@ -257,6 +327,8 @@ function LegalModal({ type, onClose }) {
 export default function Register() {
   const { register, handleSubmit, watch, formState: { errors } } = useForm()
   const { register: registerUser } = useAuth()   // ← FIXED: removed supabase from here
+  const { theme, toggleTheme } = useTheme()
+  const C = theme === 'dark' ? C_DARK : C_LIGHT
   const navigate = useNavigate()
   const [serverError, setServerError]   = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -347,7 +419,7 @@ export default function Register() {
   }
   const errorStyle = {
     fontSize: 12,
-    color: '#f87171',
+    color: C.errorText,
     marginTop: 6,
     display: 'flex',
     alignItems: 'center',
@@ -355,8 +427,41 @@ export default function Register() {
     fontWeight: 600,
   }
 
+  const features = [
+    { Icon: FolderKanban,  label: 'Subjects',     desc: 'Colour-coded courses',        color: C.indigo },
+    { Icon: ClipboardList, label: 'Assignments',  desc: 'Track tasks & deadlines',     color: C.emerald },
+    { Icon: BarChart3,     label: 'Grades',       desc: 'Scores & averages',           color: C.amber },
+    { Icon: Bot,           label: 'AI Assistant', desc: 'Instant help on coursework',  color: C.violet },
+  ]
+
+  const badges = [
+    { Icon: Gift,     label: 'Always Free' },
+    { Icon: Lock,     label: 'Supabase Auth' },
+    { Icon: Bot,      label: 'AI-Powered' },
+    { Icon: Calendar, label: 'Calendar' },
+  ]
+
+  const themeToggleBtn = (size = 34) => (
+    <button
+      onClick={toggleTheme}
+      aria-label="Toggle dark mode"
+      style={{
+        background: 'none', border: `1px solid ${C.border}`, borderRadius: 8,
+        width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', color: C.muted, transition: 'border-color .2s, color .2s', flexShrink: 0,
+      }}
+    >
+      {theme === 'dark' ? <Sun size={size === 34 ? 16 : 15} /> : <Moon size={size === 34 ? 16 : 15} />}
+    </button>
+  )
+
   /* ──────────────────── EMAIL SENT SCREEN ──────────────────── */
   if (emailSent) {
+    const inboxSteps = [
+      { Icon: Mail,       text: 'Click the link in the email to verify your account.' },
+      { Icon: Clock,      text: <span>Link expires in <span style={{ color: C.indigoFg, fontWeight: 700 }}>24 hours</span>.</span> },
+      { Icon: FolderOpen, text: <span>Can't find it? Check your <span style={{ color: C.indigoFg, fontWeight: 700 }}>spam/junk</span> folder.</span> },
+    ]
     return (
       <div style={{
         fontFamily: "'Plus Jakarta Sans', sans-serif",
@@ -368,6 +473,7 @@ export default function Register() {
         padding: 20,
         position: 'relative',
         overflow: 'hidden',
+        transition: 'background .3s',
       }}>
         <style>{`
           @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -375,8 +481,8 @@ export default function Register() {
           @keyframes bounceIn { 0%{opacity:0;transform:scale(.6)} 70%{transform:scale(1.05)} 100%{opacity:1;transform:scale(1)} }
           .bounce-in { animation: bounceIn .55s cubic-bezier(.34,1.56,.64,1) forwards; }
         `}</style>
-        <div style={{ position:'fixed', top:'-20%', left:'-15%', width:600, height:600, borderRadius:'50%', background:`radial-gradient(circle,${C.indigo}12,transparent 70%)`, pointerEvents:'none' }} />
-        <div style={{ position:'fixed', bottom:'5%', right:'-10%', width:400, height:400, borderRadius:'50%', background:`radial-gradient(circle,#7c3aed10,transparent 70%)`, pointerEvents:'none' }} />
+        <div style={{ position:'fixed', top:'-20%', left:'-15%', width:600, height:600, borderRadius:'50%', background:`radial-gradient(circle,${C.indigo}14,transparent 70%)`, pointerEvents:'none' }} />
+        <div style={{ position:'fixed', bottom:'5%', right:'-10%', width:400, height:400, borderRadius:'50%', background:`radial-gradient(circle,${C.violet}12,transparent 70%)`, pointerEvents:'none' }} />
         <div className="bounce-in" style={{
           position: 'relative',
           background: C.surface,
@@ -386,21 +492,21 @@ export default function Register() {
           maxWidth: 440,
           width: '100%',
           textAlign: 'center',
-          boxShadow: `0 40px 80px rgba(0,0,0,.5), 0 0 0 1px ${C.indigo}18`,
+          boxShadow: `0 32px 70px ${C.indigo}14, 0 0 0 1px ${C.indigo}0a`,
         }}>
           <div style={{ position:'absolute', top:0, left:0, right:0, height:3, borderRadius:'20px 20px 0 0', background:`linear-gradient(90deg,${C.indigo},${C.violet},${C.indigoFg})` }} />
-          <div style={{ fontSize: 56, marginBottom: 20 }}>📬</div>
+          <div style={{
+            width: 72, height: 72, borderRadius: '50%', margin: '0 auto 20px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: `${C.emerald}14`, border: `1px solid ${C.emerald}30`,
+          }}><MailCheck size={32} color={C.emerald} /></div>
           <h2 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: C.text, marginBottom: 8, letterSpacing: '-0.5px' }}>Check your inbox!</h2>
           <p style={{ fontSize: 13, color: C.muted, marginBottom: 4 }}>We sent a confirmation link to:</p>
           <p style={{ fontSize: 14, fontWeight: 700, color: C.indigoFg, marginBottom: 24, wordBreak: 'break-all' }}>{registeredEmail}</p>
           <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 12, padding: '16px 18px', marginBottom: 28, textAlign: 'left' }}>
-            {[
-              ['📩', 'Click the link in the email to verify your account.'],
-              ['🕐', <span>Link expires in <span style={{ color: C.indigoFg, fontWeight: 700 }}>24 hours</span>.</span>],
-              ['📁', <span>Can't find it? Check your <span style={{ color: C.indigoFg, fontWeight: 700 }}>spam/junk</span> folder.</span>],
-            ].map(([icon, text], i) => (
-              <p key={i} style={{ fontSize: 12, color: C.muted, lineHeight: 1.7, display: 'flex', gap: 8, marginBottom: i < 2 ? 6 : 0 }}>
-                <span>{icon}</span><span>{text}</span>
+            {inboxSteps.map(({ Icon, text }, i) => (
+              <p key={i} style={{ fontSize: 12, color: C.muted, lineHeight: 1.7, display: 'flex', gap: 8, marginBottom: i < 2 ? 6 : 0, alignItems: 'flex-start' }}>
+                <Icon size={14} style={{ flexShrink: 0, marginTop: 2 }} /><span>{text}</span>
               </p>
             ))}
           </div>
@@ -433,6 +539,7 @@ export default function Register() {
       flexDirection: 'column',
       position: 'relative',
       overflowX: 'hidden',
+      transition: 'background .3s, color .3s',
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -448,7 +555,7 @@ export default function Register() {
           box-shadow: 0 0 0 3px ${C.indigo}22 !important;
         }
         .reg-input-ok  { border-color: ${C.emerald}66 !important; box-shadow: 0 0 0 3px ${C.emerald}14 !important; }
-        .reg-input-bad { border-color: #f8717166 !important; box-shadow: 0 0 0 3px #f8717114 !important; }
+        .reg-input-bad { border-color: ${C.error}66 !important; box-shadow: 0 0 0 3px ${C.error}14 !important; }
         .reg-eye-btn:hover { color: ${C.textSoft} !important; }
 
         @keyframes fadeUp  { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
@@ -527,8 +634,8 @@ export default function Register() {
           transition: color .15s, text-decoration-color .15s;
         }
         .legal-link:hover {
-          color: #fff;
-          text-decoration-color: ${C.indigoFg};
+          color: ${C.indigoMid};
+          text-decoration-color: ${C.indigoMid};
         }
 
         @media (max-width: 767px) {
@@ -557,21 +664,22 @@ export default function Register() {
       `}</style>
 
       {/* Ambient blobs */}
-      <div style={{ position:'fixed', top:'-20%', left:'-15%', width:600, height:600, borderRadius:'50%', background:`radial-gradient(circle,${C.indigo}12,transparent 70%)`, pointerEvents:'none', zIndex:0 }} />
-      <div style={{ position:'fixed', top:'50%', right:'-15%', width:480, height:480, borderRadius:'50%', background:`radial-gradient(circle,#7c3aed10,transparent 70%)`, pointerEvents:'none', zIndex:0 }} />
-      <div style={{ position:'fixed', bottom:'5%', left:'25%', width:360, height:360, borderRadius:'50%', background:`radial-gradient(circle,#0ea5e90d,transparent 70%)`, pointerEvents:'none', zIndex:0 }} />
+      <div style={{ position:'fixed', top:'-20%', left:'-15%', width:600, height:600, borderRadius:'50%', background:`radial-gradient(circle,${C.indigo}14,transparent 70%)`, pointerEvents:'none', zIndex:0 }} />
+      <div style={{ position:'fixed', top:'50%', right:'-15%', width:480, height:480, borderRadius:'50%', background:`radial-gradient(circle,${C.violet}12,transparent 70%)`, pointerEvents:'none', zIndex:0 }} />
+      <div style={{ position:'fixed', bottom:'5%', left:'25%', width:360, height:360, borderRadius:'50%', background:`radial-gradient(circle,${C.accent}10,transparent 70%)`, pointerEvents:'none', zIndex:0 }} />
 
       {/* NAV */}
       <nav className="nav-bar" style={{
         position: 'relative', zIndex: 10,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '16px 52px',
-        background: 'rgba(8,8,18,.8)',
+        background: C.navBg,
         backdropFilter: 'blur(24px)',
         borderBottom: `1px solid ${C.border}`,
+        transition: 'background .3s, border-color .3s',
       }}>
         <Link to="/" style={{ textDecoration: 'none' }}>
-          <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.5px', userSelect: 'none' }}>
+          <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.5px', userSelect: 'none', color: C.text }}>
             <span style={{ color: C.indigo }}>Study</span>Flow
           </span>
         </Link>
@@ -582,6 +690,7 @@ export default function Register() {
             fontSize: 13, color: C.muted, textDecoration: 'none', fontWeight: 500,
             transition: 'border-color .2s, color .2s',
           }}>Sign In</Link>
+          {themeToggleBtn(34)}
         </div>
         <div style={{ display: isMobile ? 'flex' : 'none', alignItems: 'center', gap: 12 }}>
           <Link to="/" style={{ fontSize: 12, color: C.muted, textDecoration: 'none', fontWeight: 600 }}>← Home</Link>
@@ -589,6 +698,7 @@ export default function Register() {
             background: 'none', border: `1px solid ${C.border}`, borderRadius: 7, padding: '6px 12px',
             fontSize: 12, color: C.muted, textDecoration: 'none', fontWeight: 600,
           }}>Sign In</Link>
+          {themeToggleBtn(32)}
         </div>
       </nav>
 
@@ -613,11 +723,11 @@ export default function Register() {
             fontSize: 10, fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase',
             color: C.indigoFg, background: `${C.indigo}18`, border: `1px solid ${C.indigo}30`,
             borderRadius: 100, padding: '5px 14px', marginBottom: 22,
-          }}>✦ Join StudyFlow</div>
+          }}><Sparkles size={12} /> Join StudyFlow</div>
 
-          <h1 className="fu2" style={{ fontSize: 42, fontWeight: 800, lineHeight: 1.08, letterSpacing: '-1.5px', marginBottom: 16 }}>
+          <h1 className="fu2" style={{ fontSize: 42, fontWeight: 800, lineHeight: 1.08, letterSpacing: '-1.5px', marginBottom: 16, color: C.text }}>
             Your academic<br />
-            <span style={{ background: `linear-gradient(105deg,${C.indigo},${C.indigoFg})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <span style={gradientText(C)}>
               command centre.
             </span>
           </h1>
@@ -627,12 +737,7 @@ export default function Register() {
           </p>
 
           <div className="feat-grid fu3" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 32 }}>
-            {[
-              { icon: '🗂️', label: 'Subjects',     desc: 'Colour-coded courses',        color: C.indigo },
-              { icon: '📋', label: 'Assignments',  desc: 'Track tasks & deadlines',     color: C.emerald },
-              { icon: '📊', label: 'Grades',       desc: 'Scores & averages',           color: C.amber },
-              { icon: '🤖', label: 'AI Assistant', desc: 'Instant help on coursework',  color: C.violet },
-            ].map(f => (
+            {features.map(f => (
               <div key={f.label} className="feat-card-sm" style={{
                 display: 'flex', alignItems: 'center', gap: 14,
                 background: C.surface, border: `1px solid ${C.border}`,
@@ -643,8 +748,8 @@ export default function Register() {
                 <div style={{
                   width: 38, height: 38, borderRadius: 10, flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: `${f.color}15`, border: `1px solid ${f.color}28`, fontSize: 18,
-                }}>{f.icon}</div>
+                  background: `${f.color}15`, border: `1px solid ${f.color}28`,
+                }}><f.Icon size={18} color={f.color} /></div>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{f.label}</div>
                   <div style={{ fontSize: 12, color: C.muted }}>{f.desc}</div>
@@ -654,12 +759,13 @@ export default function Register() {
           </div>
 
           <div className="proof-tags fu4" style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 20 }}>
-            {['🆓 Always Free','🔒 Supabase Auth','🤖 AI-Powered','📅 Calendar'].map(t => (
-              <span key={t} style={{
+            {badges.map(b => (
+              <span key={b.label} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
                 fontSize: 11, color: C.indigoFg,
                 background: `${C.indigo}14`, border: `1px solid ${C.indigo}28`,
                 borderRadius: 6, padding: '4px 9px', fontWeight: 600,
-              }}>{t}</span>
+              }}><b.Icon size={12} /> {b.label}</span>
             ))}
           </div>
 
@@ -678,7 +784,7 @@ export default function Register() {
             border: `1px solid ${C.border}`,
             borderRadius: 20,
             overflow: 'hidden',
-            boxShadow: `0 32px 80px rgba(0,0,0,.45), 0 0 0 1px ${C.indigo}0c`,
+            boxShadow: `0 32px 70px ${C.indigo}14, 0 0 0 1px ${C.indigo}0a`,
           }}>
             <div style={{ height: 3, background: `linear-gradient(90deg,${C.indigo},${C.violet},${C.indigoFg})` }} />
 
@@ -730,40 +836,56 @@ export default function Register() {
                 <div className="fu3">
                   <label htmlFor="reg-name" style={labelStyle}>Full Name</label>
                   <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none' }}>🧑‍🎓</span>
+                    <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', display: 'flex', pointerEvents: 'none' }}>
+                      <GraduationCap size={16} color={C.muted} />
+                    </span>
                     <input id="reg-name" {...register('name', { required: 'Name is required' })} type="text" placeholder="Enter your full name" autoComplete="name" className="reg-input" style={inputBase} />
                   </div>
-                  {errors.name && <p role="alert" style={errorStyle}><span>⚠</span>{errors.name.message}</p>}
+                  {errors.name && <p role="alert" style={errorStyle}><AlertCircle size={13} />{errors.name.message}</p>}
                 </div>
 
                 {/* Email */}
                 <div className="fu3">
                   <label htmlFor="reg-email" style={labelStyle}>Email Address</label>
                   <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none' }}>📧</span>
+                    <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', display: 'flex', pointerEvents: 'none' }}>
+                      <Mail size={16} color={C.muted} />
+                    </span>
                     <input id="reg-email" {...register('email', { required: 'Email is required', pattern: { value: /^\S+@\S+$/i, message: 'Invalid email address' } })} type="email" placeholder="your@email.com" autoComplete="email" className="reg-input" style={inputBase} />
                   </div>
-                  {errors.email && <p role="alert" style={errorStyle}><span>⚠</span>{errors.email.message}</p>}
+                  {errors.email && <p role="alert" style={errorStyle}><AlertCircle size={13} />{errors.email.message}</p>}
                 </div>
 
                 {/* Password */}
                 <div className="fu4">
                   <label htmlFor="reg-password" style={labelStyle}>Password</label>
                   <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none' }}>🔒</span>
+                    <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', display: 'flex', pointerEvents: 'none' }}>
+                      <Lock size={16} color={C.muted} />
+                    </span>
                     <input id="reg-password" {...register('password', { required: 'Password is required', minLength: { value: 6, message: 'Minimum 6 characters' } })} type={showPassword ? 'text' : 'password'} placeholder="Min. 6 characters" autoComplete="new-password" className="reg-input" style={{ ...inputBase, paddingRight: 44 }} />
-                    <button type="button" className="reg-eye-btn" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'} style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: C.muted, transition: 'color .2s' }}>{showPassword ? '🙈' : '👁️'}</button>
+                    <button type="button" className="reg-eye-btn" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'} style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', color: C.muted, transition: 'color .2s' }}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
                   </div>
-                  {errors.password && <p role="alert" style={errorStyle}><span>⚠</span>{errors.password.message}</p>}
+                  {errors.password && <p role="alert" style={errorStyle}><AlertCircle size={13} />{errors.password.message}</p>}
                   {passwordValue && (() => {
                     const len = passwordValue.length
-                    const strength = len < 6 ? { level:0, color:C.surface2, label:'Too short', filled:0 } : len < 8 ? { level:1, color:'#f87171', label:'🔴 Weak', filled:1 } : len < 10 ? { level:2, color:C.amber, label:'🟡 Fair', filled:2 } : len < 12 ? { level:3, color:C.emerald, label:'🟢 Good', filled:3 } : { level:4, color:C.indigo, label:'✨ Strong', filled:4 }
+                    const strength = len < 6
+                      ? { level:0, color:C.muted, label:'Too short', Icon:null, filled:0 }
+                      : len < 8
+                      ? { level:1, color:C.errorText, label:'Weak', Icon:AlertTriangle, filled:1 }
+                      : len < 10
+                      ? { level:2, color:C.amber, label:'Fair', Icon:AlertCircle, filled:2 }
+                      : len < 12
+                      ? { level:3, color:C.emerald, label:'Good', Icon:CheckCircle2, filled:3 }
+                      : { level:4, color:C.indigo, label:'Strong', Icon:Sparkles, filled:4 }
                     return (
                       <div style={{ marginTop: 10 }}>
                         <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
                           {[0,1,2,3].map(i => <div key={i} style={{ flex:1, height:4, borderRadius:4, background: i < strength.filled ? strength.color : C.border, transition:'background .3s, box-shadow .3s', boxShadow: i < strength.filled ? `0 0 8px ${strength.color}88` : 'none' }} />)}
                         </div>
-                        <span style={{ fontSize: 11, color: strength.level === 0 ? C.muted : strength.color, fontWeight: 600, transition:'color .3s' }}>{strength.label}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: strength.level === 0 ? C.muted : strength.color, fontWeight: 600, transition:'color .3s' }}>
+                          {strength.Icon && <strength.Icon size={12} />} {strength.label}
+                        </span>
                       </div>
                     )
                   })()}
@@ -773,18 +895,20 @@ export default function Register() {
                 <div className="fu4">
                   <label htmlFor="reg-confirm" style={labelStyle}>Confirm Password</label>
                   <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none' }}>
-                      {confirmValue ? (passwordsMatch ? '✅' : '❌') : '🔑'}
+                    <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', display: 'flex', pointerEvents: 'none' }}>
+                      {confirmValue
+                        ? (passwordsMatch ? <CheckCircle2 size={16} color={C.emerald} /> : <XCircle size={16} color={C.errorText} />)
+                        : <KeyRound size={16} color={C.muted} />}
                     </span>
                     <input id="reg-confirm" {...register('confirmPassword', { required: 'Please confirm your password', validate: val => val === watch('password') || 'Passwords do not match' })} type={showConfirm ? 'text' : 'password'} placeholder="Re-enter your password" autoComplete="new-password" className={`reg-input ${confirmValue ? (passwordsMatch ? 'reg-input-ok' : 'reg-input-bad') : ''}`} style={{ ...inputBase, paddingRight: 44 }} />
-                    <button type="button" className="reg-eye-btn" onClick={() => setShowConfirm(v => !v)} aria-label={showConfirm ? 'Hide confirm password' : 'Show confirm password'} style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: C.muted, transition: 'color .2s' }}>{showConfirm ? '🙈' : '👁️'}</button>
+                    <button type="button" className="reg-eye-btn" onClick={() => setShowConfirm(v => !v)} aria-label={showConfirm ? 'Hide confirm password' : 'Show confirm password'} style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', color: C.muted, transition: 'color .2s' }}>{showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}</button>
                   </div>
                   {confirmValue && (
-                    <p style={{ ...errorStyle, color: passwordsMatch ? C.emerald : '#f87171', marginTop: 6 }}>
-                      {passwordsMatch ? '✓ Passwords match' : '✗ Passwords do not match'}
+                    <p style={{ ...errorStyle, color: passwordsMatch ? C.emerald : C.errorText, marginTop: 6 }}>
+                      {passwordsMatch ? <Check size={13} /> : <X size={13} />} {passwordsMatch ? 'Passwords match' : 'Passwords do not match'}
                     </p>
                   )}
-                  {errors.confirmPassword && !confirmValue && <p role="alert" style={errorStyle}><span>⚠</span>{errors.confirmPassword.message}</p>}
+                  {errors.confirmPassword && !confirmValue && <p role="alert" style={errorStyle}><AlertCircle size={13} />{errors.confirmPassword.message}</p>}
                 </div>
 
                 {/* Terms checkbox */}
@@ -792,8 +916,8 @@ export default function Register() {
                   <label style={{
                     display: 'flex', gap: 10, cursor: 'pointer',
                     padding: '12px 14px',
-                    background: termsError ? '#f8717108' : C.surface2,
-                    border: `1px solid ${termsError ? '#f8717140' : C.border}`,
+                    background: termsError ? `${C.error}08` : C.surface2,
+                    border: `1px solid ${termsError ? C.error + '40' : C.border}`,
                     borderRadius: 10,
                     transition: 'border-color .2s, background .2s',
                   }}>
@@ -822,14 +946,14 @@ export default function Register() {
                     </span>
                   </label>
                   {termsError && (
-                    <p role="alert" style={errorStyle}><span>⚠</span>You must accept the terms to continue</p>
+                    <p role="alert" style={errorStyle}><AlertCircle size={13} />You must accept the terms to continue</p>
                   )}
                 </div>
 
                 {serverError && (
-                  <div className="fu5" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#f8717110', border: '1px solid #f8717130', borderRadius: 10, padding: '12px 14px' }}>
-                    <span>🚨</span>
-                    <p style={{ fontSize: 13, color: '#f87171', fontWeight: 600 }}>{serverError}</p>
+                  <div className="fu5" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: `${C.error}10`, border: `1px solid ${C.error}30`, borderRadius: 10, padding: '12px 14px' }}>
+                    <AlertTriangle size={16} color={C.errorText} />
+                    <p style={{ fontSize: 13, color: C.errorText, fontWeight: 600 }}>{serverError}</p>
                   </div>
                 )}
 
@@ -851,13 +975,13 @@ export default function Register() {
           </div>
 
           <div className="fu6" style={{ display: 'flex', justifyContent: 'center', marginTop: 20 }}>
-            <button onClick={() => setShowGuide(true)} className="guide-btn" style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 12, color: C.muted, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, transition: 'background .2s, border-color .2s' }}>
-              ✨ How does StudyFlow work?
+            <button onClick={() => setShowGuide(true)} className="guide-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 12, color: C.muted, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600, transition: 'background .2s, border-color .2s' }}>
+              <Sparkles size={13} /> How does StudyFlow work?
             </button>
           </div>
 
-          <p style={{ textAlign: 'center', fontSize: 11, color: C.muted, marginTop: 16 }} className="fu6">
-            🔒 Secured with Supabase Auth
+          <p style={{ textAlign: 'center', fontSize: 11, color: C.muted, marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }} className="fu6">
+            <Lock size={11} /> Secured with Supabase Auth
           </p>
         </div>
       </div>
@@ -865,14 +989,14 @@ export default function Register() {
       {/* FOOTER */}
       <footer className="footer-bar" style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 52px', borderTop: `1px solid ${C.border}` }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 800 }}><span style={{ color: C.indigo }}>Study</span>Flow</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}><span style={{ color: C.indigo }}>Study</span>Flow</div>
           <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>The academic command centre for students.</div>
         </div>
         <span style={{ fontSize: 12, color: C.muted }}>© {new Date().getFullYear()} StudyFlow · Built for students.</span>
       </footer>
 
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
-      {legalModal && <LegalModal type={legalModal} onClose={closeLegal} />}
+      {legalModal && <LegalModal type={legalModal} onClose={closeLegal} C={C} />}
     </div>
   )
 }

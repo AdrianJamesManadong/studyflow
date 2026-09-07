@@ -3,17 +3,34 @@ import { useSubjects } from '../hooks/useSubjects'
 import { useAssignments } from '../hooks/useAssignments'
 import { useGrades } from '../hooks/useGrades'
 import { useNotes } from '../hooks/useNotes'
+import {
+  Bot,
+  User,
+  Clock,
+  X,
+  Check,
+  Copy,
+  AlertTriangle,
+  RotateCcw,
+  Send,
+  Loader2,
+  ClipboardList,
+  BarChart3,
+  CalendarDays,
+  Brain,
+  Target,
+} from 'lucide-react'
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY
 
 const MAX_CONVERSATIONS = 30
 
 const SUGGESTIONS = [
-  { text: 'What assignments do I have coming up?', icon: '📋' },
-  { text: 'How is my grade average looking?',       icon: '📊' },
-  { text: 'Give me a study plan for today',          icon: '🗓️' },
-  { text: 'Quiz me on my notes',                     icon: '🧠' },
-  { text: 'What subject should I focus on?',         icon: '🎯' },
+  { text: 'What assignments do I have coming up?', icon: ClipboardList },
+  { text: 'How is my grade average looking?',       icon: BarChart3    },
+  { text: 'Give me a study plan for today',          icon: CalendarDays },
+  { text: 'Quiz me on my notes',                     icon: Brain        },
+  { text: 'What subject should I focus on?',         icon: Target       },
 ]
 
 function makeInitialMessage() {
@@ -79,37 +96,37 @@ export function AIAssistantSkeleton() {
     <div className="flex flex-col h-[calc(100vh-8rem)] animate-pulse">
       <div className="mb-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-gray-800" />
+          <div className="w-11 h-11 rounded-2xl bg-gray-200 dark:bg-gray-800" />
           <div className="space-y-2">
-            <div className="h-6 w-32 bg-gray-800 rounded-lg" />
-            <div className="h-3.5 w-56 bg-gray-800 rounded" />
+            <div className="h-6 w-32 bg-gray-200 dark:bg-gray-800 rounded-lg" />
+            <div className="h-3.5 w-56 bg-gray-200 dark:bg-gray-800 rounded" />
           </div>
         </div>
-        <div className="h-8 w-20 bg-gray-800 rounded-lg" />
+        <div className="h-8 w-20 bg-gray-200 dark:bg-gray-800 rounded-lg" />
       </div>
 
       <div className="flex-1 space-y-4 overflow-hidden">
         <div className="flex justify-start">
           <div className="flex gap-3 max-w-[75%]">
-            <div className="w-9 h-9 rounded-full bg-gray-800 flex-shrink-0 mt-1" />
+            <div className="w-9 h-9 rounded-full bg-gray-200 dark:bg-gray-800 flex-shrink-0 mt-1" />
             <div className="space-y-2">
-              <div className="h-16 w-72 bg-gray-800 rounded-2xl rounded-bl-sm" />
-              <div className="h-3 w-16 bg-gray-800 rounded" />
+              <div className="h-16 w-72 bg-gray-200 dark:bg-gray-800 rounded-2xl rounded-bl-sm" />
+              <div className="h-3 w-16 bg-gray-200 dark:bg-gray-800 rounded" />
             </div>
           </div>
         </div>
         <div className="flex justify-end">
           <div className="space-y-2 items-end flex flex-col">
-            <div className="h-10 w-48 bg-indigo-900/50 rounded-2xl rounded-br-sm" />
-            <div className="h-3 w-16 bg-gray-800 rounded" />
+            <div className="h-10 w-48 bg-indigo-100 dark:bg-indigo-950/40 rounded-2xl rounded-br-sm" />
+            <div className="h-3 w-16 bg-gray-200 dark:bg-gray-800 rounded" />
           </div>
         </div>
         <div className="flex justify-start">
           <div className="flex gap-3 max-w-[75%]">
-            <div className="w-9 h-9 rounded-full bg-gray-800 flex-shrink-0 mt-1" />
+            <div className="w-9 h-9 rounded-full bg-gray-200 dark:bg-gray-800 flex-shrink-0 mt-1" />
             <div className="space-y-2">
-              <div className="h-24 w-80 bg-gray-800 rounded-2xl rounded-bl-sm" />
-              <div className="h-3 w-16 bg-gray-800 rounded" />
+              <div className="h-24 w-80 bg-gray-200 dark:bg-gray-800 rounded-2xl rounded-bl-sm" />
+              <div className="h-3 w-16 bg-gray-200 dark:bg-gray-800 rounded" />
             </div>
           </div>
         </div>
@@ -117,13 +134,13 @@ export function AIAssistantSkeleton() {
 
       <div className="flex gap-2 flex-wrap mb-3">
         {[120, 96, 140, 110].map(w => (
-          <div key={w} className="h-8 bg-gray-800 rounded-full" style={{ width: w }} />
+          <div key={w} className="h-8 bg-gray-200 dark:bg-gray-800 rounded-full" style={{ width: w }} />
         ))}
       </div>
 
       <div className="flex gap-3">
-        <div className="flex-1 h-12 bg-gray-900 border border-gray-800 rounded-2xl" />
-        <div className="w-12 h-12 bg-gray-800 rounded-2xl" />
+        <div className="flex-1 h-12 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl" />
+        <div className="w-12 h-12 bg-gray-200 dark:bg-gray-800 rounded-2xl" />
       </div>
     </div>
   )
@@ -352,8 +369,8 @@ Be concise, helpful, motivating, and specific to their data. Use emojis occasion
         .dot-2 { animation: blink 1.4s ease-in-out infinite 0.2s;  }
         .dot-3 { animation: blink 1.4s ease-in-out infinite 0.4s;  }
         @keyframes glowPulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.25); }
-          50%      { box-shadow: 0 0 0 6px rgba(99,102,241,0); }
+          0%, 100% { box-shadow: 0 0 0 0 rgba(79,70,229,0.20); }
+          50%      { box-shadow: 0 0 0 6px rgba(79,70,229,0); }
         }
         .bot-glow { animation: glowPulse 2.5s ease-in-out infinite; }
         @keyframes dropIn {
@@ -368,13 +385,13 @@ Be concise, helpful, motivating, and specific to their data. Use emojis occasion
         {/* Header */}
         <div className="mb-5 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xl shadow-lg shadow-indigo-900/40 bot-glow">
-              🤖
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-md shadow-indigo-200 dark:shadow-indigo-950/40 bot-glow">
+              <Bot size={22} className="text-white" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-white tracking-tight">AI Assistant</h2>
-              <p className="text-gray-400 text-xs mt-0.5 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">AI Assistant</h2>
+              <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
                 Powered by Groq · {subjects.length} subjects · {assignments.filter(a => a.status !== 'done').length} pending
               </p>
             </div>
@@ -383,9 +400,9 @@ Be concise, helpful, motivating, and specific to their data. Use emojis occasion
           <div className="flex items-center gap-2 relative" ref={historyRef}>
             <button
               onClick={() => setShowHistory(v => !v)}
-              className="text-xs text-gray-400 hover:text-white bg-gray-900/60 hover:bg-gray-800 border border-gray-800 hover:border-gray-600 px-3.5 py-2 rounded-xl transition flex items-center gap-1.5"
+              className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 px-3.5 py-2 rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
             >
-              🕐 History
+              <Clock size={13} /> History
               {conversations.length > 0 && (
                 <span className="bg-indigo-600 text-white text-[10px] rounded-full px-1.5 py-0.5 leading-none">
                   {conversations.length}
@@ -394,16 +411,16 @@ Be concise, helpful, motivating, and specific to their data. Use emojis occasion
             </button>
             <button
               onClick={startNewChat}
-              className="text-xs text-gray-400 hover:text-white bg-gray-900/60 hover:bg-gray-800 border border-gray-800 hover:border-gray-600 px-3.5 py-2 rounded-xl transition"
+              className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 px-3.5 py-2 rounded-xl shadow-sm transition-colors"
             >
               + New chat
             </button>
 
             {/* History dropdown */}
             {showHistory && (
-              <div className="history-drop absolute top-full right-0 mt-2 w-80 max-h-96 overflow-y-auto bg-gray-950 border border-gray-800 rounded-2xl shadow-2xl shadow-black/40 z-20 p-2">
+              <div className="history-drop absolute top-full right-0 mt-2 w-80 max-h-96 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-20 p-2">
                 {conversations.length === 0 ? (
-                  <div className="text-center text-gray-500 text-xs py-8 px-4">
+                  <div className="text-center text-gray-500 dark:text-gray-400 text-xs py-8 px-4">
                     No past conversations yet.<br />Start chatting and they'll show up here.
                   </div>
                 ) : (
@@ -411,21 +428,21 @@ Be concise, helpful, motivating, and specific to their data. Use emojis occasion
                     <button
                       key={conv.id}
                       onClick={() => loadConversation(conv)}
-                      className={`w-full text-left group flex items-start justify-between gap-2 px-3 py-2.5 rounded-xl transition mb-0.5
-                        ${conv.id === activeId ? 'bg-indigo-600/15 border border-indigo-500/30' : 'hover:bg-gray-800/70 border border-transparent'}`}
+                      className={`w-full text-left group flex items-start justify-between gap-2 px-3 py-2.5 rounded-xl transition-colors mb-0.5
+                        ${conv.id === activeId ? 'bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800' : 'hover:bg-gray-50 dark:hover:bg-gray-700 border border-transparent'}`}
                     >
                       <div className="min-w-0">
-                        <p className="text-xs text-gray-200 truncate">{conv.title}</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">{formatHistoryTime(conv.updatedAt)}</p>
+                        <p className="text-xs text-gray-800 dark:text-gray-200 truncate">{conv.title}</p>
+                        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{formatHistoryTime(conv.updatedAt)}</p>
                       </div>
                       <span
                         role="button"
                         tabIndex={0}
                         onClick={(e) => deleteConversation(conv.id, e)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-red-400 text-xs flex-shrink-0 mt-0.5"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 flex-shrink-0 mt-0.5"
                         title="Delete conversation"
                       >
-                        ✕
+                        <X size={13} />
                       </span>
                     </button>
                   ))
@@ -443,16 +460,16 @@ Be concise, helpful, motivating, and specific to their data. Use emojis occasion
               className={`flex msg-appear ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               {msg.role === 'assistant' && (
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500/30 to-purple-600/30 border border-indigo-500/40 flex items-center justify-center flex-shrink-0 mt-1 mr-2.5 text-sm">
-                  🤖
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-100 to-violet-100 dark:from-indigo-950/40 dark:to-violet-950/40 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center flex-shrink-0 mt-1 mr-2.5">
+                  <Bot size={16} className="text-indigo-600 dark:text-indigo-400" />
                 </div>
               )}
 
               <div className={`flex flex-col gap-1 max-w-[78%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 <div className={`group relative rounded-3xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap shadow-sm
                   ${msg.role === 'user'
-                    ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-br-md shadow-indigo-900/30'
-                    : 'bg-gray-900/80 border border-gray-800 text-gray-200 rounded-bl-md hover:border-gray-700 transition-colors'
+                    ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-br-md'
+                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-md hover:border-gray-300 dark:hover:border-gray-600 transition-colors'
                   }`}
                 >
                   {msg.content}
@@ -462,23 +479,23 @@ Be concise, helpful, motivating, and specific to their data. Use emojis occasion
                     title="Copy message"
                     className={`absolute -top-2 ${msg.role === 'user' ? '-left-8' : '-right-8'}
                       opacity-0 group-hover:opacity-100 transition-opacity
-                      w-6 h-6 rounded-full bg-gray-800 border border-gray-700
-                      flex items-center justify-center text-[10px] hover:bg-gray-700`}
+                      w-6 h-6 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm
+                      flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700`}
                   >
-                    {copiedId === msg.id ? '✓' : '⎘'}
+                    {copiedId === msg.id ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                   </button>
                 </div>
 
                 {msg.timestamp && (
-                  <span className="text-[10px] text-gray-600 px-1">
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500 px-1">
                     {formatTime(msg.timestamp)}
                   </span>
                 )}
               </div>
 
               {msg.role === 'user' && (
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500/40 to-purple-600/40 border border-indigo-500/40 flex items-center justify-center flex-shrink-0 mt-1 ml-2.5 text-sm">
-                  👤
+                <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center flex-shrink-0 mt-1 ml-2.5">
+                  <User size={16} className="text-gray-600 dark:text-gray-300" />
                 </div>
               )}
             </div>
@@ -486,13 +503,13 @@ Be concise, helpful, motivating, and specific to their data. Use emojis occasion
 
           {sending && (
             <div className="flex justify-start msg-appear">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500/30 to-purple-600/30 border border-indigo-500/40 flex items-center justify-center flex-shrink-0 mt-1 mr-2.5 text-sm">
-                🤖
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-100 to-violet-100 dark:from-indigo-950/40 dark:to-violet-950/40 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center flex-shrink-0 mt-1 mr-2.5">
+                <Bot size={16} className="text-indigo-600 dark:text-indigo-400" />
               </div>
-              <div className="bg-gray-900/80 border border-gray-800 rounded-3xl rounded-bl-md px-4 py-3.5 flex items-center gap-1.5">
-                <span className="w-2 h-2 bg-indigo-400 rounded-full dot-1" />
-                <span className="w-2 h-2 bg-indigo-400 rounded-full dot-2" />
-                <span className="w-2 h-2 bg-indigo-400 rounded-full dot-3" />
+              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-3xl rounded-bl-md px-4 py-3.5 flex items-center gap-1.5 shadow-sm">
+                <span className="w-2 h-2 bg-indigo-500 rounded-full dot-1" />
+                <span className="w-2 h-2 bg-indigo-500 rounded-full dot-2" />
+                <span className="w-2 h-2 bg-indigo-500 rounded-full dot-3" />
               </div>
             </div>
           )}
@@ -502,18 +519,20 @@ Be concise, helpful, motivating, and specific to their data. Use emojis occasion
 
         {/* Error + Retry */}
         {error && (
-          <div className="flex items-center justify-between bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-3 mb-3 text-xs text-red-400 flex-shrink-0">
-            <span>⚠️ {error}</span>
+          <div className="flex items-center justify-between bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-2xl px-4 py-3 mb-3 text-xs text-red-600 dark:text-red-400 flex-shrink-0">
+            <span className="flex items-center gap-1.5"><AlertTriangle size={13} /> {error}</span>
             <div className="flex items-center gap-2 ml-3">
               {retryMsg && (
                 <button
                   onClick={() => { setError(''); sendMessage(retryMsg) }}
-                  className="text-indigo-400 hover:text-indigo-300 border border-indigo-500/30 px-2.5 py-1 rounded-lg transition"
+                  className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
                 >
-                  ↺ Retry
+                  <RotateCcw size={11} /> Retry
                 </button>
               )}
-              <button onClick={() => setError('')} className="hover:text-red-300 transition">✕</button>
+              <button onClick={() => setError('')} className="hover:text-red-800 dark:hover:text-red-300 transition-colors">
+                <X size={13} />
+              </button>
             </div>
           </div>
         )}
@@ -526,9 +545,9 @@ Be concise, helpful, motivating, and specific to their data. Use emojis occasion
                 key={s.text}
                 onClick={() => sendMessage(s.text)}
                 disabled={sending}
-                className="text-xs bg-gray-900/60 border border-gray-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-gray-400 hover:text-white px-3.5 py-2 rounded-full transition disabled:opacity-40 hover:scale-[1.03] active:scale-95 flex items-center gap-1.5"
+                className="text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white px-3.5 py-2 rounded-full shadow-sm transition-colors disabled:opacity-40 hover:scale-[1.03] active:scale-95 flex items-center gap-1.5"
               >
-                <span>{s.icon}</span>
+                <s.icon size={13} />
                 {s.text}
               </button>
             ))}
@@ -544,14 +563,14 @@ Be concise, helpful, motivating, and specific to their data. Use emojis occasion
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
             placeholder="Ask anything about your studies..."
             disabled={sending}
-            className="flex-1 bg-gray-900/70 border border-gray-800 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-2xl px-4 py-3.5 text-white placeholder-gray-500 focus:outline-none transition text-sm disabled:opacity-60"
+            className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 rounded-2xl px-4 py-3.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none transition text-sm disabled:opacity-60"
           />
           <button
             onClick={() => sendMessage()}
             disabled={sending || !input.trim()}
-            className="bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white w-12 h-auto rounded-2xl transition font-medium text-sm flex items-center justify-center shadow-lg shadow-indigo-900/30"
+            className="bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white w-12 h-auto rounded-2xl transition-colors font-medium text-sm flex items-center justify-center shadow-md shadow-indigo-200 dark:shadow-indigo-950/40"
           >
-            {sending ? '…' : '➤'}
+            {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
           </button>
         </div>
 

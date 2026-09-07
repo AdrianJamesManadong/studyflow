@@ -1,31 +1,75 @@
 import { useState, useEffect } from 'react'
+import { useTheme } from '../hooks/useTheme'
+import {
+  X,
+  Sparkles,
+  Rocket,
+  Lightbulb,
+  ThumbsUp,
+  BookOpen,
+  ClipboardList,
+  BarChart3,
+  NotebookPen,
+  Calendar,
+  Timer,
+  Bot,
+  Bell,
+} from 'lucide-react'
 
-const C = {
-  bg:        '#080812',
-  surface:   '#0f0f1e',
-  surface2:  '#13132a',
-  border:    '#1c1c38',
-  borderHi:  '#2e2e58',
-  indigo:    '#5b50f0',
-  indigoMid: '#7c74f5',
-  indigoFg:  '#a5a0fa',
-  emerald:   '#10b981',
-  amber:     '#f59e0b',
-  violet:    '#8b5cf6',
-  text:      '#eeeef8',
-  textSoft:  '#b0b0cc',
-  muted:     '#5a5a7a',
+/* ─── Design tokens — StudyFlow Professional Palette (matches Register/Login) ─── */
+const C_LIGHT = {
+  bg:        '#F8F7FC',
+  surface:   '#FFFFFF',
+  surface2:  '#EEF2FF',
+  border:    '#E6E4F2',
+  borderHi:  '#C7D2FE',
+  indigo:    '#4F46E5',
+  indigoMid: '#7C3AED',
+  indigoFg:  '#4F46E5',
+  accent:    '#A78BFA',
+  emerald:   '#22C55E',
+  amber:     '#F59E0B',
+  violet:    '#7C3AED',
+  text:      '#1F2937',
+  textSoft:  '#4B5563',
+  muted:     '#6B7280',
+  error:     '#EF4444',
+  errorText: '#DC2626',
+  overlay:   'rgba(31,41,55,.45)',
+  shadowSoft:'rgba(31,41,55,0.04)',
 }
 
-const FEATURES = [
-  { icon: '📚', title: 'Subjects',      desc: 'Add your subjects with color labels to organize everything.' },
-  { icon: '📝', title: 'Assignments',   desc: 'Track assignments with due dates, priority levels, and status.' },
-  { icon: '📊', title: 'Grades',        desc: 'Log your scores and automatically calculate your GPA and averages.' },
-  { icon: '🗒️', title: 'Notes',         desc: 'Write and organize notes per subject with a clean editor.' },
-  { icon: '📅', title: 'Calendar',      desc: 'See all your assignments and events in a monthly calendar view.' },
-  { icon: '⏱️', title: 'Pomodoro',      desc: 'Stay focused with a built-in Pomodoro timer with session tracking.' },
-  { icon: '🤖', title: 'AI Assistant',  desc: 'Ask your AI study assistant anything — it knows your data.' },
-  { icon: '🔔', title: 'Notifications', desc: 'Get reminded when assignments are due soon.' },
+const C_DARK = {
+  bg:        '#0B0D12',
+  surface:   '#151822',
+  surface2:  '#1C1F2E',
+  border:    '#262A38',
+  borderHi:  '#3730A3',
+  indigo:    '#6366F1',
+  indigoMid: '#8B5CF6',
+  indigoFg:  '#818CF8',
+  accent:    '#A78BFA',
+  emerald:   '#34D399',
+  amber:     '#FBBF24',
+  violet:    '#A78BFA',
+  text:      '#F3F4F6',
+  textSoft:  '#CBD5E1',
+  muted:     '#94A3B8',
+  error:     '#F87171',
+  errorText: '#FCA5A5',
+  overlay:   'rgba(0,0,0,.55)',
+  shadowSoft:'rgba(0,0,0,0.35)',
+}
+
+const FEATURES_META = [
+  { Icon: BookOpen,      title: 'Subjects',      desc: 'Add your subjects with color labels to organize everything.',     key: 'indigo' },
+  { Icon: ClipboardList, title: 'Assignments',   desc: 'Track assignments with due dates, priority levels, and status.',  key: 'emerald' },
+  { Icon: BarChart3,     title: 'Grades',        desc: 'Log your scores and automatically calculate your GPA and averages.', key: 'amber' },
+  { Icon: NotebookPen,   title: 'Notes',         desc: 'Write and organize notes per subject with a clean editor.',       key: 'violet' },
+  { Icon: Calendar,      title: 'Calendar',      desc: 'See all your assignments and events in a monthly calendar view.', key: 'indigo' },
+  { Icon: Timer,         title: 'Pomodoro',      desc: 'Stay focused with a built-in Pomodoro timer with session tracking.', key: 'emerald' },
+  { Icon: Bot,           title: 'AI Assistant',  desc: 'Ask your AI study assistant anything — it knows your data.',      key: 'violet' },
+  { Icon: Bell,          title: 'Notifications', desc: 'Get reminded when assignments are due soon.',                     key: 'amber' },
 ]
 
 const STEPS = [
@@ -37,8 +81,14 @@ const STEPS = [
 ]
 
 export default function GuideModal({ onClose }) {
+  const { theme } = useTheme()
+  const C = theme === 'dark' ? C_DARK : C_LIGHT
   const [tab, setTab] = useState('features')
   const [isMobile, setIsMobile] = useState(window.innerWidth < 640)
+
+  // colors resolved against the active palette, keyed the same way FEATURES_META references them
+  const paletteByKey = { indigo: C.indigo, emerald: C.emerald, amber: C.amber, violet: C.violet }
+  const FEATURES = FEATURES_META.map(f => ({ ...f, color: paletteByKey[f.key] }))
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 640)
@@ -67,9 +117,9 @@ export default function GuideModal({ onClose }) {
         .guide-scroll::-webkit-scrollbar { width: 4px; }
         .guide-scroll::-webkit-scrollbar-track { background: transparent; }
         .guide-scroll::-webkit-scrollbar-thumb { background: ${C.indigo}44; border-radius: 4px; }
-        .guide-close-btn:hover { color: ${C.text} !important; }
-        .guide-got-it:hover   { opacity: .85 !important; }
-        .guide-feat-card:hover { background: ${C.borderHi} !important; }
+        .guide-close-btn:hover { background: ${C.surface2} !important; border-color: ${C.borderHi} !important; color: ${C.textSoft} !important; }
+        .guide-got-it:hover   { opacity: .88 !important; transform: translateY(-1px); }
+        .guide-feat-card:hover { background: ${C.surface} !important; border-color: ${C.indigo}44 !important; transform: translateY(-2px); }
         .guide-tab-btn:hover  { color: ${C.textSoft} !important; }
       `}</style>
 
@@ -78,7 +128,7 @@ export default function GuideModal({ onClose }) {
         onClick={onClose}
         style={{
           position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,.75)',
+          background: C.overlay,
           backdropFilter: 'blur(6px)',
           zIndex: 50,
           display: 'flex',
@@ -102,7 +152,7 @@ export default function GuideModal({ onClose }) {
             maxHeight: isMobile ? '90vh' : '88vh',
             display: 'flex',
             flexDirection: 'column',
-            boxShadow: `0 40px 100px rgba(0,0,0,.6), 0 0 0 1px ${C.indigo}18`,
+            boxShadow: `0 40px 90px ${C.shadowSoft}, 0 0 0 1px ${C.indigo}12`,
             overflow: 'hidden',
           }}
         >
@@ -134,16 +184,19 @@ export default function GuideModal({ onClose }) {
             <button
               onClick={onClose}
               className="guide-close-btn"
+              aria-label="Close"
               style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 18, color: C.muted,
-                transition: 'color .2s',
-                fontFamily: 'inherit',
-                lineHeight: 1,
-                padding: 6,
-                borderRadius: 6,
+                background: C.surface2,
+                border: `1px solid ${C.border}`,
+                borderRadius: 8,
+                width: 34, height: 34,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+                color: C.muted,
+                transition: 'background .2s, border-color .2s, color .2s',
+                flexShrink: 0,
               }}
-            >✕</button>
+            ><X size={16} /></button>
           </div>
 
           {/* Tabs */}
@@ -154,13 +207,14 @@ export default function GuideModal({ onClose }) {
             flexShrink: 0,
           }}>
             {[
-              { key: 'features', label: '✨ Features' },
-              { key: 'flow',     label: '🚀 Getting Started' },
+              { key: 'features', label: 'Features',        Icon: Sparkles },
+              { key: 'flow',     label: 'Getting Started', Icon: Rocket },
             ].map(t => (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
                 style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                   padding: isMobile ? '6px 14px' : '7px 16px',
                   borderRadius: 8,
                   fontSize: isMobile ? 12 : 13,
@@ -174,7 +228,7 @@ export default function GuideModal({ onClose }) {
                   boxShadow:  tab === t.key ? `0 4px 14px ${C.indigo}44` : 'none',
                   flex: isMobile ? 1 : 'unset',
                 }}
-              >{t.label}</button>
+              ><t.Icon size={14} /> {t.label}</button>
             ))}
           </div>
 
@@ -208,10 +262,14 @@ export default function GuideModal({ onClose }) {
                         padding: '14px 16px',
                         display: 'flex',
                         gap: 12,
-                        transition: 'background .2s',
+                        transition: 'background .2s, border-color .2s, transform .2s',
                       }}
                     >
-                      <span style={{ fontSize: 22, flexShrink: 0, lineHeight: 1 }}>{f.icon}</span>
+                      <div style={{
+                        width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: `${f.color}15`, border: `1px solid ${f.color}28`,
+                      }}><f.Icon size={18} color={f.color} /></div>
                       <div>
                         <p style={{ fontSize: 13, fontWeight: 700, color: C.text, margin: 0 }}>{f.title}</p>
                         <p style={{ fontSize: 12, color: C.muted, marginTop: 3, lineHeight: 1.6 }}>{f.desc}</p>
@@ -237,7 +295,7 @@ export default function GuideModal({ onClose }) {
                           background: C.indigo,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           color: '#fff', fontSize: 13, fontWeight: 800,
-                          boxShadow: `0 4px 14px ${C.indigo}55`,
+                          boxShadow: `0 4px 14px ${C.indigo}44`,
                           flexShrink: 0,
                         }}>{s.step}</div>
                         {i < STEPS.length - 1 && (
@@ -253,13 +311,15 @@ export default function GuideModal({ onClose }) {
                 </div>
 
                 <div style={{
-                  background: `${C.indigo}12`,
-                  border: `1px solid ${C.indigo}30`,
+                  background: `${C.indigo}10`,
+                  border: `1px solid ${C.indigo}28`,
                   borderRadius: 12,
                   padding: '14px 16px',
                   marginTop: 20,
                 }}>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: C.indigoFg, marginBottom: 6 }}>💡 Pro tip</p>
+                  <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: C.indigoFg, marginBottom: 6 }}>
+                    <Lightbulb size={14} /> Pro tip
+                  </p>
                   <p style={{ fontSize: 12, color: C.textSoft, lineHeight: 1.7, margin: 0 }}>
                     After adding subjects and assignments, ask the AI Assistant{' '}
                     <span style={{ color: C.indigoFg, fontWeight: 600 }}>"Give me a study plan for today"</span>
@@ -284,13 +344,14 @@ export default function GuideModal({ onClose }) {
           }}>
             {!isMobile && (
               <p style={{ fontSize: 11, color: C.muted, margin: 0 }}>
-                Built by Adrian James D. Manadong · New Era University
+                Built by · New Era University Student
               </p>
             )}
             <button
               onClick={onClose}
               className="guide-got-it"
               style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 background: C.indigo,
                 color: '#fff',
                 border: 'none',
@@ -301,13 +362,13 @@ export default function GuideModal({ onClose }) {
                 fontWeight: 700,
                 cursor: 'pointer',
                 fontFamily: 'inherit',
-                transition: 'opacity .2s',
+                transition: 'opacity .2s, transform .15s',
                 boxShadow: `0 4px 14px ${C.indigo}44`,
               }}
-            >Got it! 👍</button>
+            ><ThumbsUp size={15} /> Got it!</button>
             {isMobile && (
               <p style={{ fontSize: 11, color: C.muted, margin: 0, textAlign: 'center' }}>
-                Built by Adrian James D. Manadong · New Era University
+                Built by New Era University Student
               </p>
             )}
           </div>

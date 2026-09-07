@@ -1,40 +1,50 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../utils/supabase'
+import { User, Lock, AlertTriangle, Camera, Eye, EyeOff, Check, MapPin } from 'lucide-react'
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
 function Skeleton({ className = '' }) {
-  return (
-    <div
-      className={`rounded-md ${className}`}
-      style={{
-        background: 'linear-gradient(90deg, #1f2937 25%, #2d3748 50%, #1f2937 75%)',
-        backgroundSize: '600px 100%',
-        animation: 'shimmer 1.4s infinite linear',
-      }}
-    />
-  )
+  return <div className={`skeleton-shimmer rounded-md ${className}`} />
 }
 
 function ProfileSkeleton() {
   return (
-    <div className="max-w-2xl space-y-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 flex items-center gap-5">
-        <Skeleton className="w-20 h-20 rounded-full flex-shrink-0" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-2/5" />
-          <Skeleton className="h-3 w-3/5" />
-          <Skeleton className="h-3 w-1/3" />
+    <>
+      <style>{`
+        @keyframes shimmer {
+          0%   { background-position: -600px 0; }
+          100% { background-position:  600px 0; }
+        }
+        .skeleton-shimmer {
+          background: linear-gradient(90deg, #EEF2FF 25%, #E6E4F2 50%, #EEF2FF 75%);
+          background-size: 600px 100%;
+          animation: shimmer 1.4s infinite linear;
+        }
+        .dark .skeleton-shimmer {
+          background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
+          background-size: 600px 100%;
+          animation: shimmer 1.4s infinite linear;
+        }
+      `}</style>
+      <div className="max-w-2xl space-y-4">
+        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-6 flex items-center gap-5 shadow-sm">
+          <Skeleton className="w-20 h-20 rounded-full flex-shrink-0" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-2/5" />
+            <Skeleton className="h-3 w-3/5" />
+            <Skeleton className="h-3 w-1/3" />
+          </div>
+        </div>
+        <Skeleton className="h-12 w-full rounded-xl" />
+        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-6 space-y-4 shadow-sm">
+          <Skeleton className="h-4 w-1/4" />
+          <Skeleton className="h-10 w-full rounded-lg" />
+          <Skeleton className="h-10 w-full rounded-lg" />
+          <Skeleton className="h-10 w-28 rounded-lg" />
         </div>
       </div>
-      <Skeleton className="h-12 w-full rounded-xl" />
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-4">
-        <Skeleton className="h-4 w-1/4" />
-        <Skeleton className="h-10 w-full rounded-lg" />
-        <Skeleton className="h-10 w-full rounded-lg" />
-        <Skeleton className="h-10 w-28 rounded-lg" />
-      </div>
-    </div>
+    </>
   )
 }
 
@@ -45,28 +55,9 @@ function getStrength(pw) {
   if (/[A-Z]/.test(pw)) score++
   if (/[0-9]/.test(pw)) score++
   if (/[^A-Za-z0-9]/.test(pw)) score++
-  const colors = ['', '#E24B4A', '#EF9F27', '#1D9E75', '#0F6E56']
+  const colors = ['', '#DC2626', '#F59E0B', '#22C55E', '#4F46E5']
   const labels = ['', 'Weak', 'Fair', 'Strong', 'Very strong']
   return { score, color: colors[score], label: labels[score] }
-}
-
-// ─── Avatar component ─────────────────────────────────────────────────────────
-function AvatarDisplay({ avatarUrl, name, size = 'lg' }) {
-  const sizeClass = size === 'lg' ? 'w-20 h-20 text-2xl' : 'w-14 h-14 text-xl'
-  if (avatarUrl) {
-    return (
-      <img
-        src={avatarUrl}
-        alt={name}
-        className={`${sizeClass} rounded-full object-cover border-2 border-indigo-500/40 flex-shrink-0`}
-      />
-    )
-  }
-  return (
-    <div className={`${sizeClass} rounded-full bg-indigo-600/20 border-2 border-indigo-500/40 flex items-center justify-center text-indigo-300 font-semibold flex-shrink-0`}>
-      {name?.[0]?.toUpperCase() ?? '?'}
-    </div>
-  )
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -227,9 +218,9 @@ export default function Profile() {
   }
 
   const tabs = [
-    { id: 'profile', label: 'Profile', icon: '👤' },
-    { id: 'password', label: 'Password', icon: '🔒' },
-    { id: 'danger',   label: 'Danger zone', icon: '⚠️' },
+    { id: 'profile',  label: 'Profile',     Icon: User },
+    { id: 'password', label: 'Password',    Icon: Lock },
+    { id: 'danger',   label: 'Danger zone', Icon: AlertTriangle },
   ]
 
   const yearOptions = [
@@ -261,36 +252,36 @@ export default function Profile() {
 
         {/* Header */}
         <div>
-          <h2 className="text-2xl font-semibold text-white tracking-tight">Profile</h2>
-          <p className="text-gray-400 text-sm mt-1">Manage your account settings</p>
+          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">Profile</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Manage your account settings</p>
         </div>
 
         {/* Avatar card */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex items-center gap-5">
+        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-5 flex items-center gap-5 shadow-sm">
           {/* Clickable avatar */}
           <div className="relative avatar-wrapper flex-shrink-0 cursor-pointer" onClick={() => !avatarPreview && fileInputRef.current?.click()}>
             {displayAvatar ? (
               <img
                 src={displayAvatar}
                 alt={name}
-                className="w-20 h-20 rounded-full object-cover border-2 border-indigo-500/40"
+                className="w-20 h-20 rounded-full object-cover border-2 border-indigo-200 dark:border-indigo-800"
               />
             ) : (
-              <div className="w-20 h-20 rounded-full bg-indigo-600/20 border-2 border-indigo-500/40 flex items-center justify-center text-indigo-300 text-2xl font-semibold">
+              <div className="w-20 h-20 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border-2 border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-2xl font-semibold">
                 {name?.[0]?.toUpperCase() ?? '?'}
               </div>
             )}
             {/* Hover overlay */}
             {!avatarPreview && (
-              <div className="avatar-hover-overlay absolute inset-0 rounded-full bg-black/60 flex flex-col items-center justify-center gap-0.5">
-                <span className="text-lg">📷</span>
+              <div className="avatar-hover-overlay absolute inset-0 rounded-full bg-black/50 flex flex-col items-center justify-center gap-0.5">
+                <Camera size={16} className="text-white" />
                 <span className="text-white text-[10px] font-medium">Change</span>
               </div>
             )}
             {/* Pending badge */}
             {avatarPreview && (
-              <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-amber-500 border-2 border-gray-900 flex items-center justify-center">
-                <span className="text-[9px]">!</span>
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-amber-500 border-2 border-white dark:border-gray-800 flex items-center justify-center">
+                <span className="text-[9px] text-white font-bold">!</span>
               </div>
             )}
           </div>
@@ -304,14 +295,18 @@ export default function Profile() {
           />
 
           <div className="flex-1 min-w-0">
-            <p className="text-white font-medium text-base leading-tight">{name || 'No name set'}</p>
-            <p className="text-gray-400 text-sm mt-0.5 truncate">{user?.email}</p>
-            {school && <p className="text-gray-500 text-xs mt-0.5 truncate">📍 {school}{yearLevel ? ` · ${yearLevel}` : ''}</p>}
+            <p className="text-gray-900 dark:text-white font-medium text-base leading-tight">{name || 'No name set'}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5 truncate">{user?.email}</p>
+            {school && (
+              <p className="text-gray-400 dark:text-gray-500 text-xs mt-0.5 truncate flex items-center gap-1">
+                <MapPin size={11} /> {school}{yearLevel ? ` · ${yearLevel}` : ''}
+              </p>
+            )}
             <div className="flex items-center gap-2 mt-1.5">
-              <p className="text-gray-600 text-xs font-mono">
+              <p className="text-gray-400 dark:text-gray-500 text-xs font-mono">
                 Member since {new Date(user?.created_at || Date.now()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </p>
-              <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+              <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 font-medium">
                 Active
               </span>
             </div>
@@ -320,23 +315,23 @@ export default function Profile() {
 
         {/* Avatar pending upload bar */}
         {avatarPreview && (
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 flex items-center gap-3 panel-animate">
-            <span className="text-amber-400 text-sm">📷</span>
-            <p className="text-amber-300 text-sm flex-1">New avatar selected — save it below to apply.</p>
+          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 flex items-center gap-3 panel-animate">
+            <Camera size={16} className="text-amber-600 dark:text-amber-400" />
+            <p className="text-amber-700 dark:text-amber-400 text-sm flex-1">New avatar selected — save it below to apply.</p>
             <div className="flex gap-2">
               <button
                 onClick={handleAvatarCancel}
-                className="text-xs text-gray-500 hover:text-gray-300 transition px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-600"
+                className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAvatarUpload}
                 disabled={avatarUploading}
-                className="text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 px-3 py-1.5 rounded-lg transition disabled:opacity-50 flex items-center gap-1.5"
+                className="text-xs bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700 px-3 py-1.5 rounded-lg transition disabled:opacity-50 flex items-center gap-1.5"
               >
                 {avatarUploading ? (
-                  <><span className="inline-block w-3 h-3 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" /> Uploading…</>
+                  <><span className="inline-block w-3 h-3 border-2 border-amber-400/40 border-t-amber-600 dark:border-t-amber-400 rounded-full animate-spin" /> Uploading…</>
                 ) : 'Save avatar'}
               </button>
             </div>
@@ -344,25 +339,25 @@ export default function Profile() {
         )}
 
         {avatarError && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 flex items-center gap-2 panel-animate">
-            <span className="text-red-400 text-sm">⚠</span>
-            <p className="text-red-400 text-sm">{avatarError}</p>
+          <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 flex items-center gap-2 panel-animate">
+            <AlertTriangle size={14} className="text-red-500 dark:text-red-400" />
+            <p className="text-red-600 dark:text-red-400 text-sm">{avatarError}</p>
           </div>
         )}
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-gray-900 border border-gray-800 rounded-xl p-1">
+        <div className="flex gap-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-1 shadow-sm">
           {tabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-all
                 ${activeTab === tab.id
-                  ? 'bg-gray-800 text-white border border-gray-700'
-                  : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
             >
-              <span>{tab.icon}</span>
+              <tab.Icon size={15} />
               <span className="hidden sm:inline">{tab.label}</span>
             </button>
           ))}
@@ -370,57 +365,57 @@ export default function Profile() {
 
         {/* ── Profile tab ── */}
         {activeTab === 'profile' && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-5 panel-animate">
+          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-6 space-y-5 panel-animate shadow-sm">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Personal info</h3>
+              <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Personal info</h3>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="text-xs text-indigo-400 hover:text-indigo-300 transition flex items-center gap-1"
+                className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition flex items-center gap-1"
               >
-                <span>📷</span> Change avatar
+                <Camera size={13} /> Change avatar
               </button>
             </div>
 
             {/* Name */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">Full name</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Full name</label>
               <input
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="Your full name"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition"
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
               />
             </div>
 
             {/* Email (read-only) */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">Email address</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email address</label>
               <input
                 value={user?.email}
                 disabled
-                className="w-full bg-gray-800/40 border border-gray-800 rounded-lg px-4 py-2.5 text-sm text-gray-600 cursor-not-allowed"
+                className="w-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-400 dark:text-gray-500 cursor-not-allowed"
               />
-              <p className="text-xs text-gray-700">Email cannot be changed</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Email cannot be changed</p>
             </div>
 
             {/* School */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">School / University</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">School / University</label>
               <input
                 value={school}
                 onChange={e => setSchool(e.target.value)}
                 placeholder="e.g. University of the Philippines"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition"
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
               />
             </div>
 
             {/* Year level */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">Year level</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Year level</label>
               <select
                 value={yearLevel}
                 onChange={e => setYearLevel(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition appearance-none cursor-pointer"
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition appearance-none cursor-pointer"
               >
                 <option value="">Select year level…</option>
                 {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
@@ -429,38 +424,38 @@ export default function Profile() {
 
             {/* Bio */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">Bio <span className="normal-case text-gray-700">(optional)</span></label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Bio <span className="normal-case text-gray-400 dark:text-gray-500">(optional)</span></label>
               <textarea
                 value={bio}
                 onChange={e => setBio(e.target.value)}
                 placeholder="A short bio about yourself…"
                 rows={3}
                 maxLength={200}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition resize-none"
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition resize-none"
               />
-              <p className="text-xs text-gray-700 text-right">{bio.length}/200</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 text-right">{bio.length}/200</p>
             </div>
 
             {nameError && (
-              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2.5">
-                <span className="text-red-400 text-sm">⚠</span>
-                <p className="text-red-400 text-sm">{nameError}</p>
+              <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2.5">
+                <AlertTriangle size={14} className="text-red-500 dark:text-red-400" />
+                <p className="text-red-600 dark:text-red-400 text-sm">{nameError}</p>
               </div>
             )}
             {nameSuccess && (
-              <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-4 py-2.5">
-                <span className="text-emerald-400 text-sm">✓</span>
-                <p className="text-emerald-400 text-sm">Profile updated successfully</p>
+              <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg px-4 py-2.5">
+                <Check size={14} className="text-emerald-600 dark:text-emerald-400" />
+                <p className="text-emerald-600 dark:text-emerald-400 text-sm">Profile updated successfully</p>
               </div>
             )}
 
             <button
               onClick={handleUpdateProfile}
               disabled={nameLoading || !name.trim()}
-              className="inline-flex items-center gap-2 bg-indigo-600/20 hover:bg-indigo-600/30 disabled:opacity-30 disabled:cursor-not-allowed text-indigo-300 border border-indigo-500/30 font-medium px-5 py-2.5 rounded-lg transition text-sm"
+              className="inline-flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 disabled:opacity-40 disabled:cursor-not-allowed text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 font-medium px-5 py-2.5 rounded-lg transition text-sm"
             >
               {nameLoading ? (
-                <><span className="inline-block w-3.5 h-3.5 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />Saving…</>
+                <><span className="inline-block w-3.5 h-3.5 border-2 border-indigo-300 dark:border-indigo-700 border-t-indigo-600 dark:border-t-indigo-400 rounded-full animate-spin" />Saving…</>
               ) : 'Save changes'}
             </button>
           </div>
@@ -468,78 +463,86 @@ export default function Profile() {
 
         {/* ── Password tab ── */}
         {activeTab === 'password' && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-5 panel-animate">
-            <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Change password</h3>
+          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-6 space-y-5 panel-animate shadow-sm">
+            <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Change password</h3>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">New password</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">New password</label>
               <div className="relative">
                 <input
                   type={showNew ? 'text' : 'password'}
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition pr-10"
+                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition pr-10"
                 />
-                <button type="button" onClick={() => setShowNew(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400 transition text-sm">
-                  {showNew ? '🙈' : '👁️'}
+                <button type="button" onClick={() => setShowNew(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition">
+                  {showNew ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
               {newPassword.length > 0 && (
                 <div className="space-y-1 pt-1">
                   <div className="flex gap-1">
                     {[1, 2, 3, 4].map(i => (
-                      <div key={i} className="h-0.5 flex-1 rounded-full transition-all duration-300"
-                        style={{ background: i <= strength.score ? strength.color : '#374151' }} />
+                      <div
+                        key={i}
+                        className={`h-0.5 flex-1 rounded-full transition-all duration-300 ${i <= strength.score ? '' : 'bg-gray-200 dark:bg-gray-700'}`}
+                        style={i <= strength.score ? { background: strength.color } : undefined}
+                      />
                     ))}
                   </div>
-                  <p className="text-xs" style={{ color: strength.score > 0 ? strength.color : '#6b7280' }}>{strength.label}</p>
+                  <p
+                    className={`text-xs ${strength.score > 0 ? '' : 'text-gray-400 dark:text-gray-500'}`}
+                    style={strength.score > 0 ? { color: strength.color } : undefined}
+                  >
+                    {strength.label}
+                  </p>
                 </div>
               )}
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">Confirm new password</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Confirm new password</label>
               <div className="relative">
                 <input
                   type={showConfirm ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition pr-10"
+                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition pr-10"
                 />
-                <button type="button" onClick={() => setShowConfirm(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400 transition text-sm">
-                  {showConfirm ? '🙈' : '👁️'}
+                <button type="button" onClick={() => setShowConfirm(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition">
+                  {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
               {confirmPassword.length > 0 && newPassword !== confirmPassword && (
-                <p className="text-xs text-red-400 mt-1">Passwords don't match</p>
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1">Passwords don't match</p>
               )}
               {confirmPassword.length > 0 && newPassword === confirmPassword && newPassword.length > 0 && (
-                <p className="text-xs text-emerald-400 mt-1">✓ Passwords match</p>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1"><Check size={11} /> Passwords match</p>
               )}
             </div>
 
             {passError && (
-              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2.5">
-                <span className="text-red-400 text-sm">⚠</span>
-                <p className="text-red-400 text-sm">{passError}</p>
+              <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2.5">
+                <AlertTriangle size={14} className="text-red-500 dark:text-red-400" />
+                <p className="text-red-600 dark:text-red-400 text-sm">{passError}</p>
               </div>
             )}
             {passSuccess && (
-              <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-4 py-2.5">
-                <span className="text-emerald-400 text-sm">✓</span>
-                <p className="text-emerald-400 text-sm">Password updated successfully</p>
+              <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg px-4 py-2.5">
+                <Check size={14} className="text-emerald-600 dark:text-emerald-400" />
+                <p className="text-emerald-600 dark:text-emerald-400 text-sm">Password updated successfully</p>
               </div>
             )}
 
             <button
               onClick={handleUpdatePassword}
               disabled={passLoading || !newPassword || !confirmPassword}
-              className="inline-flex items-center gap-2 bg-indigo-600/20 hover:bg-indigo-600/30 disabled:opacity-30 disabled:cursor-not-allowed text-indigo-300 border border-indigo-500/30 font-medium px-5 py-2.5 rounded-lg transition text-sm"
+              className="inline-flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 disabled:opacity-40 disabled:cursor-not-allowed text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 font-medium px-5 py-2.5 rounded-lg transition text-sm"
             >
               {passLoading ? (
-                <><span className="inline-block w-3.5 h-3.5 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />Updating…</>
+                <><span className="inline-block w-3.5 h-3.5 border-2 border-indigo-300 dark:border-indigo-700 border-t-indigo-600 dark:border-t-indigo-400 rounded-full animate-spin" />Updating…</>
               ) : 'Update password'}
             </button>
           </div>
@@ -547,18 +550,18 @@ export default function Profile() {
 
         {/* ── Danger zone tab ── */}
         {activeTab === 'danger' && (
-          <div className="bg-gray-900 border border-red-500/20 rounded-xl p-6 space-y-4 panel-animate">
-            <h3 className="text-xs font-medium text-red-500/70 uppercase tracking-wider">Danger zone</h3>
+          <div className="bg-white dark:bg-gray-800 border border-red-200 dark:border-red-800 rounded-xl p-6 space-y-4 panel-animate shadow-sm">
+            <h3 className="text-xs font-medium text-red-500 dark:text-red-400 uppercase tracking-wider">Danger zone</h3>
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
-                <p className="text-white text-sm font-medium">Delete account</p>
-                <p className="text-gray-500 text-xs mt-1 max-w-sm leading-relaxed">
+                <p className="text-gray-900 dark:text-white text-sm font-medium">Delete account</p>
+                <p className="text-gray-500 dark:text-gray-400 text-xs mt-1 max-w-sm leading-relaxed">
                   Permanently removes all your subjects, assignments, grades, and notes. This action cannot be undone.
                 </p>
               </div>
               <button
                 onClick={handleDeleteAccount}
-                className="inline-flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-medium px-5 py-2.5 rounded-lg transition text-sm flex-shrink-0"
+                className="inline-flex items-center gap-2 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium px-5 py-2.5 rounded-lg transition text-sm flex-shrink-0"
               >
                 Delete account
               </button>

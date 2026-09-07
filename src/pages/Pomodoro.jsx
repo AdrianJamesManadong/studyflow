@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { Settings, RotateCcw, Play, Pause, SkipForward } from 'lucide-react'
 
 // Fix: outside component — never recreated
 const DEFAULT_DURATIONS = {
@@ -8,9 +9,9 @@ const DEFAULT_DURATIONS = {
 }
 
 const MODE_META = {
-  focus: { label: 'Focus',       color: 'text-indigo-400',  ring: 'stroke-indigo-500',  btn: 'bg-indigo-600 hover:bg-indigo-500'  },
-  short: { label: 'Short Break', color: 'text-emerald-400', ring: 'stroke-emerald-500', btn: 'bg-emerald-600 hover:bg-emerald-500' },
-  long:  { label: 'Long Break',  color: 'text-sky-400',     ring: 'stroke-sky-500',     btn: 'bg-sky-600 hover:bg-sky-500'         },
+  focus: { label: 'Focus',       color: 'text-indigo-600 dark:text-indigo-400',  ring: 'stroke-indigo-500',  btn: 'bg-indigo-600 hover:bg-indigo-700'  },
+  short: { label: 'Short Break', color: 'text-emerald-600 dark:text-emerald-400', ring: 'stroke-emerald-500', btn: 'bg-emerald-600 hover:bg-emerald-700' },
+  long:  { label: 'Long Break',  color: 'text-sky-600 dark:text-sky-400',     ring: 'stroke-sky-500',     btn: 'bg-sky-600 hover:bg-sky-700'         },
 }
 
 // Fix: outside component
@@ -179,26 +180,26 @@ export default function Pomodoro() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white">Pomodoro Timer</h2>
-          <p className="text-gray-400 text-sm mt-1">Stay focused, take breaks, get things done.</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Pomodoro Timer</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Stay focused, take breaks, get things done.</p>
         </div>
         <button
           onClick={openSettings}
-          className="text-gray-500 hover:text-white text-sm bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded-lg transition"
+          className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
           title="Customize durations"
         >
-          ⚙ Settings
+          <Settings size={14} /> Settings
         </button>
       </div>
 
       {/* Mode tabs */}
-      <div className="flex gap-2 bg-gray-900 border border-gray-800 rounded-xl p-1">
+      <div className="flex gap-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-1">
         {Object.entries(MODE_META).map(([key, val]) => (
           <button
             key={key}
             onClick={() => switchMode(key)}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition
-              ${mode === key ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors
+              ${mode === key ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
           >
             {val.label}
           </button>
@@ -209,7 +210,7 @@ export default function Pomodoro() {
       <div className="flex flex-col items-center gap-6">
         <div className="relative">
           <svg width="280" height="280" className="-rotate-90">
-            <circle cx="140" cy="140" r={RADIUS} fill="none" stroke="#1f2937" strokeWidth="8" />
+            <circle cx="140" cy="140" r={RADIUS} fill="none" className="stroke-gray-200 dark:stroke-gray-700" strokeWidth="8" />
             <circle
               cx="140" cy="140" r={RADIUS}
               fill="none"
@@ -225,8 +226,8 @@ export default function Pomodoro() {
             <span className={`text-6xl font-bold tabular-nums ${current.color}`}>
               {mins}:{secs}
             </span>
-            <span className="text-gray-500 text-sm mt-1">{current.label}</span>
-            <span className="text-gray-600 text-xs mt-0.5">
+            <span className="text-gray-500 dark:text-gray-400 text-sm mt-1">{current.label}</span>
+            <span className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">
               {Math.round(((total - timeLeft) / total) * 100)}%
             </span>
           </div>
@@ -236,23 +237,23 @@ export default function Pomodoro() {
         <div className="flex items-center gap-4">
           <button
             onClick={reset}
-            className="w-12 h-12 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white flex items-center justify-center transition text-lg"
+            className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white flex items-center justify-center transition-colors"
             title="Reset"
           >
-            ↺
+            <RotateCcw size={18} />
           </button>
           <button
             onClick={() => setRunning(r => !r)}
-            className={`w-20 h-20 rounded-full flex items-center justify-center text-white font-bold text-lg transition shadow-lg ${current.btn}`}
+            className={`w-20 h-20 rounded-full flex items-center justify-center text-white font-bold text-lg transition-colors shadow-md ${current.btn}`}
           >
-            {running ? '⏸' : '▶'}
+            {running ? <Pause size={26} fill="currentColor" /> : <Play size={26} fill="currentColor" className="ml-1" />}
           </button>
           <button
             onClick={() => switchMode(mode === 'focus' ? 'short' : 'focus')}
-            className="w-12 h-12 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white flex items-center justify-center transition text-lg"
+            className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white flex items-center justify-center transition-colors"
             title="Skip"
           >
-            ⏭
+            <SkipForward size={18} fill="currentColor" />
           </button>
         </div>
       </div>
@@ -262,22 +263,22 @@ export default function Pomodoro() {
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
-            className={`w-3 h-3 rounded-full transition ${i < (sessions % 4) ? 'bg-indigo-500' : 'bg-gray-700'}`}
+            className={`w-3 h-3 rounded-full transition-colors ${i < (sessions % 4) ? 'bg-indigo-500' : 'bg-gray-200 dark:bg-gray-700'}`}
           />
         ))}
-        <span className="text-gray-500 text-sm ml-2">
+        <span className="text-gray-500 dark:text-gray-400 text-sm ml-2">
           {sessions} session{sessions !== 1 ? 's' : ''} today
         </span>
       </div>
 
       {/* History */}
       {history.length > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-white font-semibold">Recent Sessions</h3>
+            <h3 className="text-gray-900 dark:text-white font-semibold">Recent Sessions</h3>
             <button
               onClick={() => { setHistory([]); writeHistory([]) }}
-              className="text-xs text-gray-600 hover:text-red-400 transition"
+              className="text-xs text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"
             >
               Clear
             </button>
@@ -287,9 +288,9 @@ export default function Pomodoro() {
               <div key={i} className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                  <span className="text-gray-300">Focus session completed</span>
+                  <span className="text-gray-700 dark:text-gray-300">Focus session completed</span>
                 </div>
-                <span className="text-gray-500">{timeAgo(h.completedAt)}</span>
+                <span className="text-gray-500 dark:text-gray-400">{timeAgo(h.completedAt)}</span>
               </div>
             ))}
           </div>
@@ -299,11 +300,11 @@ export default function Pomodoro() {
       {/* Settings Modal */}
       {showSettings && (
         <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={(e) => e.target === e.currentTarget && setShowSettings(false)}
         >
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-5">
-            <h3 className="text-white font-semibold text-lg">Timer Settings</h3>
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-5 shadow-xl">
+            <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Timer Settings</h3>
 
             {[
               { key: 'focus', label: 'Focus Duration'      },
@@ -311,14 +312,14 @@ export default function Pomodoro() {
               { key: 'long',  label: 'Long Break Duration'  },
             ].map(({ key, label }) => (
               <div key={key}>
-                <label className="block text-sm text-gray-400 mb-1">{label} (minutes)</label>
+                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">{label} (minutes)</label>
                 <input
                   type="number"
                   min="1"
                   max="99"
                   value={settingsForm[key]}
                   onChange={e => setSettingsForm(f => ({ ...f, [key]: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 transition"
+                  className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
                 />
               </div>
             ))}
@@ -326,13 +327,13 @@ export default function Pomodoro() {
             <div className="flex gap-3 pt-1">
               <button
                 onClick={() => setShowSettings(false)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg py-2 text-sm transition"
+                className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg py-2 text-sm font-medium transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={saveSettings}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg py-2 text-sm transition"
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg py-2 text-sm shadow-sm transition-colors"
               >
                 Save
               </button>

@@ -2,29 +2,98 @@ import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../hooks/useTheme'
 import { supabase } from '../utils/supabase'
 import GuideModal from '../components/GuideModal'
+import {
+  Sparkles,
+  FolderKanban,
+  ClipboardList,
+  BarChart3,
+  Bot,
+  Gift,
+  Lock,
+  Calendar,
+  Mail,
+  MailCheck,
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  Clock,
+  KeyRound,
+  X,
+  PartyPopper,
+  Sun,
+  Moon,
+} from 'lucide-react'
 
-const C = {
-  bg:        '#080812',
-  surface:   '#0f0f1e',
-  surface2:  '#13132a',
-  border:    '#1c1c38',
-  borderHi:  '#2e2e58',
-  indigo:    '#5b50f0',
-  indigoMid: '#7c74f5',
-  indigoFg:  '#a5a0fa',
-  emerald:   '#10b981',
-  amber:     '#f59e0b',
-  violet:    '#8b5cf6',
-  text:      '#eeeef8',
-  textSoft:  '#b0b0cc',
-  muted:     '#5a5a7a',
+/* ─── Design tokens — StudyFlow Professional Palette (matches Register) ─── */
+const C_LIGHT = {
+  bg:        '#F8F7FC',
+  surface:   '#FFFFFF',
+  surface2:  '#EEF2FF',
+  border:    '#E6E4F2',
+  borderHi:  '#C7D2FE',
+  indigo:    '#4F46E5',
+  indigoMid: '#7C3AED',
+  indigoFg:  '#4F46E5',
+  accent:    '#A78BFA',
+  emerald:   '#22C55E',
+  amber:     '#F59E0B',
+  violet:    '#7C3AED',
+  text:      '#1F2937',
+  textSoft:  '#4B5563',
+  muted:     '#6B7280',
+  error:     '#EF4444',
+  errorText: '#DC2626',
+  navBg:     'rgba(255,255,255,.85)',
+  shadowSoft:'rgba(31,41,55,0.04)',
+  overlay:   'rgba(31,41,55,.45)',
 }
+
+const C_DARK = {
+  bg:        '#0B0D12',
+  surface:   '#151822',
+  surface2:  '#1C1F2E',
+  border:    '#262A38',
+  borderHi:  '#3730A3',
+  indigo:    '#6366F1',
+  indigoMid: '#8B5CF6',
+  indigoFg:  '#818CF8',
+  accent:    '#A78BFA',
+  emerald:   '#34D399',
+  amber:     '#FBBF24',
+  violet:    '#A78BFA',
+  text:      '#F3F4F6',
+  textSoft:  '#CBD5E1',
+  muted:     '#94A3B8',
+  error:     '#F87171',
+  errorText: '#FCA5A5',
+  navBg:     'rgba(11,13,18,.85)',
+  shadowSoft:'rgba(0,0,0,0.35)',
+  overlay:   'rgba(0,0,0,.55)',
+}
+
+/* ─── Shared gradient-text style ────────────────────────────────────
+   Both the standard and Webkit-prefixed background-clip properties
+   are required — without both plus a transparent color fallback, the
+   gradient can paint as a solid block instead of clipping to text.   */
+const gradientText = (C) => ({
+  background: `linear-gradient(105deg,${C.indigo},${C.violet})`,
+  WebkitBackgroundClip: 'text',
+  backgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  color: 'transparent',
+  display: 'inline-block',
+})
 
 export default function Login() {
   const { register, handleSubmit, formState: { errors }, getValues, watch } = useForm()
   const { login } = useAuth()
+  const { theme, toggleTheme } = useTheme()
+  const C = theme === 'dark' ? C_DARK : C_LIGHT
   const navigate = useNavigate()
   const [serverError, setServerError]   = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -123,7 +192,7 @@ export default function Login() {
         new Promise(r => setTimeout(r, 800)),
       ])
       const name = result?.user?.user_metadata?.name || data.email.split('@')[0]
-      setToast({ message: `Welcome back, ${name}! 👋`, type: 'success' })
+      setToast({ message: `Welcome back, ${name}!`, type: 'success' })
       setTimeout(() => navigate('/dashboard'), 1200)
     } catch (err) {
       setServerError(err.message)
@@ -197,13 +266,41 @@ export default function Login() {
   }
   const errorStyle = {
     fontSize: 12,
-    color: '#f87171',
+    color: C.errorText,
     marginTop: 6,
     display: 'flex',
     alignItems: 'center',
     gap: 5,
     fontWeight: 600,
   }
+
+  const features = [
+    { Icon: FolderKanban,  label: 'Subjects',     desc: 'Your colour-coded courses',      color: C.indigo },
+    { Icon: ClipboardList, label: 'Assignments',  desc: 'Tasks & upcoming deadlines',     color: C.emerald },
+    { Icon: BarChart3,     label: 'Grades',       desc: 'Scores & running averages',      color: C.amber },
+    { Icon: Bot,           label: 'AI Assistant', desc: 'Your personal study companion',  color: C.violet },
+  ]
+
+  const badges = [
+    { Icon: Gift,     label: 'Always Free' },
+    { Icon: Lock,     label: 'Supabase Auth' },
+    { Icon: Bot,      label: 'AI-Powered' },
+    { Icon: Calendar, label: 'Calendar' },
+  ]
+
+  const themeToggleBtn = (size = 34) => (
+    <button
+      onClick={toggleTheme}
+      aria-label="Toggle dark mode"
+      style={{
+        background: 'none', border: `1px solid ${C.border}`, borderRadius: 8,
+        width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', color: C.muted, transition: 'border-color .2s, color .2s', flexShrink: 0,
+      }}
+    >
+      {theme === 'dark' ? <Sun size={size === 34 ? 16 : 15} /> : <Moon size={size === 34 ? 16 : 15} />}
+    </button>
+  )
 
   return (
     <div style={{
@@ -215,6 +312,7 @@ export default function Login() {
       flexDirection: 'column',
       position: 'relative',
       overflowX: 'hidden',
+      transition: 'background .3s, color .3s',
     }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -233,12 +331,12 @@ export default function Login() {
           box-shadow: 0 0 0 3px ${C.emerald}14 !important;
         }
         .login-eye-btn:hover { color: ${C.textSoft} !important; }
-        .cta-btn:hover  { opacity: .88 !important; transform: translateY(-1px); }
-        .cta-btn:active { transform: translateY(0) !important; }
-        .cta-btn:disabled { opacity: .6 !important; cursor: not-allowed !important; transform: none !important; }
+        .cta-btn:hover:not(:disabled)  { opacity: .88 !important; transform: translateY(-1px); }
+        .cta-btn:active:not(:disabled) { transform: translateY(0) !important; }
+        .cta-btn:disabled { opacity: .65 !important; cursor: not-allowed !important; transform: none !important; }
         .nav-btn:hover  { color: ${C.textSoft} !important; }
-        .register-link:hover { color: ${C.indigoFg} !important; }
-        .forgot-link:hover   { color: ${C.indigoFg} !important; }
+        .register-link:hover { color: ${C.indigoMid} !important; }
+        .forgot-link:hover   { color: ${C.indigoMid} !important; }
         .guide-btn:hover { background: ${C.surface2} !important; border-color: ${C.borderHi} !important; }
         .feat-card-sm:hover {
           background: ${C.surface2} !important;
@@ -332,34 +430,37 @@ export default function Login() {
         <div className="toast-in" style={{
           position: 'fixed', bottom: 28, right: 28, zIndex: 100,
           display: 'flex', alignItems: 'center', gap: 10,
-          background: toast.type === 'success' ? `${C.emerald}18` : '#f8717118',
-          border: `1px solid ${toast.type === 'success' ? C.emerald + '44' : '#f8717144'}`,
+          background: toast.type === 'success' ? `${C.emerald}14` : `${C.error}10`,
+          border: `1px solid ${toast.type === 'success' ? C.emerald + '40' : C.error + '30'}`,
           borderRadius: 12, padding: '14px 18px',
-          boxShadow: '0 16px 40px rgba(0,0,0,.5)',
+          boxShadow: `0 16px 40px ${C.shadowSoft}`,
           backdropFilter: 'blur(12px)',
           maxWidth: 320,
         }}>
-          <span style={{ fontSize: 20 }}>{toast.type === 'success' ? '✅' : '🚨'}</span>
-          <p style={{ fontSize: 13, fontWeight: 700, color: toast.type === 'success' ? C.emerald : '#f87171' }}>{toast.message}</p>
+          {toast.type === 'success'
+            ? <PartyPopper size={20} color={C.emerald} />
+            : <AlertTriangle size={20} color={C.errorText} />}
+          <p style={{ fontSize: 13, fontWeight: 700, color: toast.type === 'success' ? C.emerald : C.errorText }}>{toast.message}</p>
         </div>
       )}
 
       {/* Ambient blobs */}
-      <div style={{ position:'fixed', top:'-20%', left:'-15%', width:600, height:600, borderRadius:'50%', background:`radial-gradient(circle,${C.indigo}12,transparent 70%)`, pointerEvents:'none', zIndex:0 }} />
-      <div style={{ position:'fixed', top:'50%', right:'-15%', width:480, height:480, borderRadius:'50%', background:`radial-gradient(circle,#7c3aed10,transparent 70%)`, pointerEvents:'none', zIndex:0 }} />
-      <div style={{ position:'fixed', bottom:'5%', left:'25%', width:360, height:360, borderRadius:'50%', background:`radial-gradient(circle,#0ea5e90d,transparent 70%)`, pointerEvents:'none', zIndex:0 }} />
+      <div style={{ position:'fixed', top:'-20%', left:'-15%', width:600, height:600, borderRadius:'50%', background:`radial-gradient(circle,${C.indigo}14,transparent 70%)`, pointerEvents:'none', zIndex:0 }} />
+      <div style={{ position:'fixed', top:'50%', right:'-15%', width:480, height:480, borderRadius:'50%', background:`radial-gradient(circle,${C.violet}12,transparent 70%)`, pointerEvents:'none', zIndex:0 }} />
+      <div style={{ position:'fixed', bottom:'5%', left:'25%', width:360, height:360, borderRadius:'50%', background:`radial-gradient(circle,${C.accent}10,transparent 70%)`, pointerEvents:'none', zIndex:0 }} />
 
       {/* NAV */}
       <nav className="nav-bar" style={{
         position: 'relative', zIndex: 10,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '16px 52px',
-        background: 'rgba(8,8,18,.8)',
+        background: C.navBg,
         backdropFilter: 'blur(24px)',
         borderBottom: `1px solid ${C.border}`,
+        transition: 'background .3s, border-color .3s',
       }}>
         <Link to="/" style={{ textDecoration: 'none' }}>
-          <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.5px', userSelect: 'none' }}>
+          <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.5px', userSelect: 'none', color: C.text }}>
             <span style={{ color: C.indigo }}>Study</span>Flow
           </span>
         </Link>
@@ -370,6 +471,7 @@ export default function Login() {
             fontSize: 13, color: C.muted, textDecoration: 'none', fontWeight: 500,
             transition: 'border-color .2s, color .2s',
           }}>Register</Link>
+          {themeToggleBtn(34)}
         </div>
         <div style={{ display: isMobile ? 'flex' : 'none', alignItems: 'center', gap: 12 }}>
           <Link to="/" style={{ fontSize: 12, color: C.muted, textDecoration: 'none', fontWeight: 600 }}>← Home</Link>
@@ -377,6 +479,7 @@ export default function Login() {
             background: 'none', border: `1px solid ${C.border}`, borderRadius: 7, padding: '6px 12px',
             fontSize: 12, color: C.muted, textDecoration: 'none', fontWeight: 600,
           }}>Register</Link>
+          {themeToggleBtn(32)}
         </div>
       </nav>
 
@@ -401,11 +504,11 @@ export default function Login() {
             fontSize: 10, fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase',
             color: C.indigoFg, background: `${C.indigo}18`, border: `1px solid ${C.indigo}30`,
             borderRadius: 100, padding: '5px 14px', marginBottom: 22,
-          }}>✦ Welcome Back</div>
+          }}><Sparkles size={12} /> Welcome Back</div>
 
-          <h1 className="fu2" style={{ fontSize: 42, fontWeight: 800, lineHeight: 1.08, letterSpacing: '-1.5px', marginBottom: 16 }}>
+          <h1 className="fu2" style={{ fontSize: 42, fontWeight: 800, lineHeight: 1.08, letterSpacing: '-1.5px', marginBottom: 16, color: C.text }}>
             Pick up right<br />
-            <span style={{ background: `linear-gradient(105deg,${C.indigo},${C.indigoFg})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <span style={gradientText(C)}>
               where you left off.
             </span>
           </h1>
@@ -415,12 +518,7 @@ export default function Login() {
           </p>
 
           <div className="feat-grid fu3" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 32 }}>
-            {[
-              { icon: '🗂️', label: 'Subjects',     desc: 'Your colour-coded courses',      color: C.indigo },
-              { icon: '📋', label: 'Assignments',  desc: 'Tasks & upcoming deadlines',     color: C.emerald },
-              { icon: '📊', label: 'Grades',       desc: 'Scores & running averages',      color: C.amber },
-              { icon: '🤖', label: 'AI Assistant', desc: 'Your personal study companion',  color: C.violet },
-            ].map(f => (
+            {features.map(f => (
               <div key={f.label} className="feat-card-sm" style={{
                 display: 'flex', alignItems: 'center', gap: 14,
                 background: C.surface, border: `1px solid ${C.border}`,
@@ -431,8 +529,8 @@ export default function Login() {
                 <div style={{
                   width: 38, height: 38, borderRadius: 10, flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: `${f.color}15`, border: `1px solid ${f.color}28`, fontSize: 18,
-                }}>{f.icon}</div>
+                  background: `${f.color}15`, border: `1px solid ${f.color}28`,
+                }}><f.Icon size={18} color={f.color} /></div>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{f.label}</div>
                   <div style={{ fontSize: 12, color: C.muted }}>{f.desc}</div>
@@ -442,12 +540,13 @@ export default function Login() {
           </div>
 
           <div className="fu4" style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 20 }}>
-            {['🆓 Always Free','🔒 Supabase Auth','🤖 AI-Powered','📅 Calendar'].map(t => (
-              <span key={t} style={{
+            {badges.map(b => (
+              <span key={b.label} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
                 fontSize: 11, color: C.indigoFg,
                 background: `${C.indigo}14`, border: `1px solid ${C.indigo}28`,
                 borderRadius: 6, padding: '4px 9px', fontWeight: 600,
-              }}>{t}</span>
+              }}><b.Icon size={12} /> {b.label}</span>
             ))}
           </div>
 
@@ -466,7 +565,7 @@ export default function Login() {
             border: `1px solid ${C.border}`,
             borderRadius: 20,
             overflow: 'hidden',
-            boxShadow: `0 32px 80px rgba(0,0,0,.45), 0 0 0 1px ${C.indigo}0c`,
+            boxShadow: `0 32px 70px ${C.indigo}14, 0 0 0 1px ${C.indigo}0a`,
           }}>
             <div style={{ height: 3, background: `linear-gradient(90deg,${C.indigo},${C.violet},${C.indigoFg})` }} />
 
@@ -503,8 +602,8 @@ export default function Login() {
                   {oauthLoading ? (
                     <span className="spin-anim" style={{
                       display: 'inline-block', width: 15, height: 15,
-                      border: `2px solid rgba(255,255,255,0.3)`,
-                      borderTopColor: C.textSoft,
+                      border: `2px solid ${C.border}`,
+                      borderTopColor: C.indigo,
                       borderRadius: '50%',
                     }} />
                   ) : (
@@ -529,8 +628,8 @@ export default function Login() {
               <div className="fu3">
                 <label style={labelStyle}>Email Address</label>
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none' }}>
-                    {emailValid ? '✅' : '📧'}
+                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', display: 'flex', pointerEvents: 'none' }}>
+                    {emailValid ? <CheckCircle2 size={16} color={C.emerald} /> : <Mail size={16} color={C.muted} />}
                   </span>
                   <input
                     {...register('email', {
@@ -543,14 +642,16 @@ export default function Login() {
                     style={inputBase}
                   />
                 </div>
-                {errors.email && <p style={errorStyle}><span>⚠</span>{errors.email.message}</p>}
+                {errors.email && <p style={errorStyle}><AlertCircle size={13} />{errors.email.message}</p>}
               </div>
 
               {/* Password */}
               <div className="fu4">
                 <label style={labelStyle}>Password</label>
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none' }}>🔒</span>
+                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', display: 'flex', pointerEvents: 'none' }}>
+                    <Lock size={16} color={C.muted} />
+                  </span>
                   <input
                     {...register('password', { required: 'Password is required' })}
                     type={showPassword ? 'text' : 'password'}
@@ -564,14 +665,14 @@ export default function Login() {
                     className="login-eye-btn"
                     onClick={togglePassword}
                     title={showPassword ? 'Hides in 3s' : 'Show password'}
-                    style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: showPassword ? C.indigoFg : C.muted, transition: 'color .2s' }}
-                  >{showPassword ? '🙈' : '👁️'}</button>
+                    style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', color: showPassword ? C.indigoFg : C.muted, transition: 'color .2s' }}
+                  >{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
                 </div>
-                {errors.password && <p style={errorStyle}><span>⚠</span>{errors.password.message}</p>}
+                {errors.password && <p style={errorStyle}><AlertCircle size={13} />{errors.password.message}</p>}
 
                 {showPassword && (
                   <p style={{ fontSize: 11, color: C.muted, marginTop: 5, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span>🔐</span> Password hides automatically in 3s
+                    <Lock size={11} /> Password hides automatically in 3s
                   </p>
                 )}
 
@@ -592,7 +693,7 @@ export default function Login() {
                   background: `${C.amber}12`, border: `1px solid ${C.amber}30`,
                   borderRadius: 10, padding: '12px 14px',
                 }}>
-                  <span style={{ fontSize: 18 }}>⏳</span>
+                  <Clock size={18} color={C.amber} />
                   <div>
                     <p style={{ fontSize: 13, color: C.amber, fontWeight: 700 }}>Too many failed attempts</p>
                     <p style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
@@ -606,12 +707,12 @@ export default function Login() {
               {serverError && !isLocked && (
                 <div style={{
                   display: 'flex', alignItems: 'flex-start', gap: 10,
-                  background: '#f8717110', border: '1px solid #f8717130',
+                  background: `${C.error}10`, border: `1px solid ${C.error}30`,
                   borderRadius: 10, padding: '12px 14px',
                 }}>
-                  <span>🚨</span>
+                  <AlertTriangle size={16} color={C.errorText} />
                   <div>
-                    <p style={{ fontSize: 13, color: '#f87171', fontWeight: 600 }}>{serverError}</p>
+                    <p style={{ fontSize: 13, color: C.errorText, fontWeight: 600 }}>{serverError}</p>
                     {failCount > 0 && failCount < 3 && (
                       <p style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
                         {3 - failCount} attempt{3 - failCount !== 1 ? 's' : ''} remaining before 30s lockout
@@ -648,7 +749,7 @@ export default function Login() {
                   }}
                 >
                   {isLocked ? (
-                    <>⏳ Locked — wait {countdown}s</>
+                    <><Clock size={16} /> Locked — wait {countdown}s</>
                   ) : isLoading ? (
                     <>
                       <span className="spin-anim" style={{
@@ -684,16 +785,17 @@ export default function Login() {
               onClick={() => setShowGuide(true)}
               className="guide-btn"
               style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
                 background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
                 padding: '8px 16px', fontSize: 12, color: C.muted, cursor: 'pointer',
                 fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600,
                 transition: 'background .2s, border-color .2s',
               }}
-            >✨ How does StudyFlow work?</button>
+            ><Sparkles size={13} /> How does StudyFlow work?</button>
           </div>
 
-          <p style={{ textAlign: 'center', fontSize: 11, color: C.muted, marginTop: 16 }} className="fu6">
-            🔒 Secured with Supabase Auth
+          <p style={{ textAlign: 'center', fontSize: 11, color: C.muted, marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }} className="fu6">
+            <Lock size={11} /> Secured with Supabase Auth
           </p>
         </div>
       </div>
@@ -706,7 +808,7 @@ export default function Login() {
         borderTop: `1px solid ${C.border}`,
       }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 800 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>
             <span style={{ color: C.indigo }}>Study</span>Flow
           </div>
           <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>The academic command centre for students.</div>
@@ -722,7 +824,7 @@ export default function Login() {
             position: 'fixed', inset: 0, zIndex: 50,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: 16,
-            background: 'rgba(0,0,0,.72)',
+            background: C.overlay,
             backdropFilter: 'blur(6px)',
             fontFamily: "'Plus Jakarta Sans', sans-serif",
           }}
@@ -736,7 +838,7 @@ export default function Login() {
               width: '100%',
               maxWidth: 400,
               overflow: 'hidden',
-              boxShadow: `0 40px 100px rgba(0,0,0,.6), 0 0 0 1px ${C.indigo}18`,
+              boxShadow: `0 40px 90px ${C.shadowSoft}, 0 0 0 1px ${C.indigo}12`,
             }}
           >
             <div style={{ height: 3, background: `linear-gradient(90deg,${C.indigo},${C.violet},${C.indigoFg})` }} />
@@ -748,8 +850,8 @@ export default function Login() {
                     <div style={{
                       width: 42, height: 42, borderRadius: 11, marginBottom: 14,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: `${C.indigo}18`, border: `1px solid ${C.indigo}30`, fontSize: 20,
-                    }}>🔑</div>
+                      background: `${C.indigo}18`, border: `1px solid ${C.indigo}30`,
+                    }}><KeyRound size={20} color={C.indigoFg} /></div>
                     <h3 style={{ fontSize: 17, fontWeight: 800, color: C.text, marginBottom: 6, letterSpacing: '-0.3px' }}>Reset your password</h3>
                     <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>
                       Enter your email and we'll send you a link to reset your password.
@@ -757,14 +859,16 @@ export default function Login() {
                   </div>
                   <button
                     onClick={handleCloseForgot}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: C.muted, transition: 'color .2s', fontFamily: 'inherit', padding: 4, lineHeight: 1 }}
-                  >✕</button>
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, transition: 'color .2s', fontFamily: 'inherit', padding: 4, lineHeight: 1, display: 'flex' }}
+                  ><X size={16} /></button>
                 </div>
 
                 <div>
                   <label style={labelStyle}>Email Address</label>
                   <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none' }}>📧</span>
+                    <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', display: 'flex', pointerEvents: 'none' }}>
+                      <Mail size={16} color={C.muted} />
+                    </span>
                     <input
                       type="email"
                       value={forgotEmail}
@@ -776,7 +880,7 @@ export default function Login() {
                       autoFocus
                     />
                   </div>
-                  {forgotError && <p style={errorStyle}><span>⚠</span>{forgotError}</p>}
+                  {forgotError && <p style={errorStyle}><AlertCircle size={13} />{forgotError}</p>}
                 </div>
 
                 <div style={{ display: 'flex', gap: 10 }}>
@@ -823,8 +927,8 @@ export default function Login() {
                 <div style={{
                   width: 60, height: 60, borderRadius: '50%',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: `${C.emerald}14`, border: `1px solid ${C.emerald}30`, fontSize: 28,
-                }}>📬</div>
+                  background: `${C.emerald}14`, border: `1px solid ${C.emerald}30`,
+                }}><MailCheck size={28} color={C.emerald} /></div>
                 <div>
                   <h3 style={{ fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 8, letterSpacing: '-0.3px' }}>Check your inbox!</h3>
                   <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>

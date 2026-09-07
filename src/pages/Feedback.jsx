@@ -1,14 +1,23 @@
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useFeedback } from '../hooks/useFeedback'
+import {
+  AlertTriangle,
+  MessageSquare,
+  Heart,
+  ShieldCheck,
+  X,
+  Trash2,
+  Loader2,
+} from 'lucide-react'
 
 const CATEGORIES = [
-  { id: 'general',     label: 'General',     dot: 'bg-indigo-400',  style: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
-  { id: 'bug',         label: 'Bug',         dot: 'bg-red-400',     style: 'bg-red-500/10 text-red-400 border-red-500/20' },
-  { id: 'error',       label: 'Error',       dot: 'bg-rose-400',    style: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
-  { id: 'feature',     label: 'Feature',     dot: 'bg-emerald-400', style: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-  { id: 'improvement', label: 'Improvement', dot: 'bg-sky-400',     style: 'bg-sky-500/10 text-sky-400 border-sky-500/20' },
-  { id: 'question',    label: 'Question',    dot: 'bg-amber-400',   style: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+  { id: 'general',     label: 'General',     dot: 'bg-indigo-500',  style: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800' },
+  { id: 'bug',         label: 'Bug',         dot: 'bg-red-500',     style: 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800' },
+  { id: 'error',       label: 'Error',       dot: 'bg-rose-500',    style: 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800' },
+  { id: 'feature',     label: 'Feature',     dot: 'bg-emerald-500', style: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' },
+  { id: 'improvement', label: 'Improvement', dot: 'bg-sky-500',     style: 'bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-800' },
+  { id: 'question',    label: 'Question',    dot: 'bg-amber-500',   style: 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800' },
 ]
 
 const MAX_LEN = 500
@@ -126,9 +135,9 @@ export default function Feedback() {
   if (loading) {
     return (
       <div className="space-y-4 animate-pulse max-w-3xl">
-        <div className="h-8 w-48 bg-gray-800 rounded-lg" />
-        <div className="h-32 bg-gray-900 border border-gray-800 rounded-2xl" />
-        {[1, 2, 3].map(i => <div key={i} className="h-28 bg-gray-900 border border-gray-800 rounded-2xl" />)}
+        <div className="h-8 w-48 bg-gray-200 dark:bg-gray-800 rounded-lg" />
+        <div className="h-32 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl" />
+        {[1, 2, 3].map(i => <div key={i} className="h-28 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl" />)}
       </div>
     )
   }
@@ -137,23 +146,23 @@ export default function Feedback() {
     <div className="space-y-6 max-w-3xl">
 
       <div>
-        <h2 className="text-2xl font-bold text-white tracking-tight">Feedback & Reports</h2>
-        <p className="text-gray-400 text-sm mt-1">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">Feedback & Reports</h2>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
           Share ideas, report bugs, and see what other students are saying.
         </p>
       </div>
 
-      <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-4 space-y-3">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 space-y-3 shadow-sm">
         <textarea
           value={content}
           onChange={e => setContent(e.target.value.slice(0, MAX_LEN))}
           placeholder="What's on your mind? Report a bug, suggest a feature, or just say hi..."
           rows={3}
           aria-label="Write feedback"
-          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition resize-none text-sm"
+          className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition resize-none text-sm"
         />
         <div className="flex justify-end -mt-1">
-          <span className={`text-[10px] ${remaining <= 20 ? 'text-amber-400' : 'text-gray-600'}`}>
+          <span className={`text-[10px] ${remaining <= 20 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}>
             {remaining} left
           </span>
         </div>
@@ -165,15 +174,15 @@ export default function Feedback() {
                 key={c.id}
                 onClick={() => setCategory(c.id)}
                 aria-pressed={category === c.id}
-                className={`text-xs px-3 py-1.5 rounded-full border capitalize transition flex items-center gap-1.5
-                  ${category === c.id ? c.style : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300'}`}
+                className={`text-xs px-3 py-1.5 rounded-full border capitalize transition-colors flex items-center gap-1.5
+                  ${category === c.id ? c.style : 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
                 {c.label}
               </button>
             ))}
 
-            <label className="flex items-center gap-1.5 text-xs text-gray-400 ml-2 cursor-pointer select-none">
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 ml-2 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={isAnonymous}
@@ -187,20 +196,20 @@ export default function Feedback() {
           <button
             onClick={handlePost}
             disabled={!content.trim() || posting}
-            className="bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2 rounded-xl transition shadow-lg shadow-indigo-900/30"
+            className="bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2 rounded-xl transition-colors shadow-md shadow-indigo-200 dark:shadow-indigo-950/40"
           >
             {posting ? 'Posting…' : 'Post'}
           </button>
         </div>
 
-        {postError && <p className="text-red-400 text-xs">{postError}</p>}
+        {postError && <p className="text-red-600 dark:text-red-400 text-xs">{postError}</p>}
       </div>
 
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => setFilter('all')}
-          className={`px-4 py-1.5 rounded-xl text-sm font-medium transition
-            ${filter === 'all' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/30' : 'bg-gray-900/70 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'}`}
+          className={`px-4 py-1.5 rounded-xl text-sm font-medium transition-colors
+            ${filter === 'all' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 dark:shadow-indigo-950/40' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-600 shadow-sm'}`}
         >
           All
         </button>
@@ -208,8 +217,8 @@ export default function Feedback() {
           <button
             key={c.id}
             onClick={() => setFilter(c.id)}
-            className={`px-4 py-1.5 rounded-xl text-sm font-medium transition capitalize
-              ${filter === c.id ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/30' : 'bg-gray-900/70 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'}`}
+            className={`px-4 py-1.5 rounded-xl text-sm font-medium transition-colors capitalize
+              ${filter === c.id ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 dark:shadow-indigo-950/40' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-600 shadow-sm'}`}
           >
             {c.label}
           </button>
@@ -217,16 +226,18 @@ export default function Feedback() {
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2.5 text-xs text-red-400">
-          ⚠️ {error}
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl px-4 py-2.5 text-xs text-red-600 dark:text-red-400 flex items-center gap-1.5">
+          <AlertTriangle size={13} /> {error}
         </div>
       )}
 
       {filtered.length === 0 && (
-        <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-12 text-center">
-          <p className="text-4xl mb-3">💬</p>
-          <p className="text-white font-medium mb-1">No posts yet</p>
-          <p className="text-gray-400 text-sm">Be the first to share feedback!</p>
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-12 text-center shadow-sm">
+          <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800 flex items-center justify-center mx-auto mb-3">
+            <MessageSquare size={20} className="text-indigo-500 dark:text-indigo-400" />
+          </div>
+          <p className="text-gray-900 dark:text-white font-medium mb-1">No posts yet</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">Be the first to share feedback!</p>
         </div>
       )}
 
@@ -241,16 +252,16 @@ export default function Feedback() {
           const postComments = comments[post.id] ?? []
 
           return (
-            <div key={post.id} className="bg-gray-900/70 border border-gray-800 rounded-2xl p-4 hover:border-gray-700 transition">
+            <div key={post.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 hover:border-gray-300 dark:hover:border-gray-600 shadow-sm transition-colors">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2.5">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0
-                    ${post.is_anonymous ? 'bg-gray-700' : 'bg-gradient-to-br from-indigo-500 to-purple-600'}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
+                    ${post.is_anonymous ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white'}`}>
                     {post.is_anonymous ? '?' : displayName[0]?.toUpperCase()}
                   </div>
                   <div>
-                    <p className="text-sm text-white font-medium">{displayName}</p>
-                    <p className="text-[11px] text-gray-500">{timeAgo(post.created_at)}</p>
+                    <p className="text-sm text-gray-900 dark:text-white font-medium">{displayName}</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">{timeAgo(post.created_at)}</p>
                   </div>
                 </div>
 
@@ -262,61 +273,61 @@ export default function Feedback() {
                   {isOwn && (
                     <button
                       onClick={() => setConfirmDeletePost(post)}
-                      className="text-gray-600 hover:text-red-400 text-xs transition"
+                      className="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                       aria-label="Delete post"
                       title="Delete post"
                     >
-                      ✕
+                      <X size={13} />
                     </button>
                   )}
                 </div>
               </div>
 
-              <p className="text-gray-200 text-sm mt-3 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+              <p className="text-gray-800 dark:text-gray-200 text-sm mt-3 whitespace-pre-wrap leading-relaxed">{post.content}</p>
 
-              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-800/70">
+              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
                 <button
                   onClick={() => toggleLike(post.id)}
                   aria-pressed={liked}
                   aria-label={liked ? 'Unlike post' : 'Like post'}
-                  className={`flex items-center gap-1.5 text-xs transition ${liked ? 'text-pink-400' : 'text-gray-500 hover:text-pink-400'}`}
+                  className={`flex items-center gap-1.5 text-xs transition-colors ${liked ? 'text-pink-600 dark:text-pink-400' : 'text-gray-400 dark:text-gray-500 hover:text-pink-600 dark:hover:text-pink-400'}`}
                 >
-                  <span>{liked ? '❤️' : '🤍'}</span>
+                  <Heart size={13} fill={liked ? 'currentColor' : 'none'} />
                   {post.like_count > 0 ? post.like_count : 'Like'}
                 </button>
                 <button
                   onClick={() => toggleExpand(post.id)}
                   aria-expanded={isExpanded}
-                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-400 transition"
+                  className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                 >
-                  💬 {post.comment_count > 0 ? post.comment_count : 'Comment'}
+                  <MessageSquare size={13} /> {post.comment_count > 0 ? post.comment_count : 'Comment'}
                 </button>
               </div>
 
               {isExpanded && (
-                <div className="mt-3 pt-3 border-t border-gray-800/70 space-y-3">
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-3">
                   {commentsLoading && (
                     <div className="space-y-2">
                       {[1, 2].map(i => (
-                        <div key={i} className="h-8 bg-gray-800/60 rounded-xl animate-pulse" />
+                        <div key={i} className="h-8 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />
                       ))}
                     </div>
                   )}
 
                   {!commentsLoading && postComments.length === 0 && (
-                    <p className="text-xs text-gray-500 italic">No comments yet — be the first to reply.</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 italic">No comments yet — be the first to reply.</p>
                   )}
 
                   {!commentsLoading && postComments.map(c => (
                     <div key={c.id} className="flex items-start gap-2.5">
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0
-                        ${c.is_admin ? 'bg-gradient-to-br from-amber-500 to-orange-600' : c.is_anonymous ? 'bg-gray-700' : 'bg-gradient-to-br from-indigo-500/70 to-purple-600/70'}`}>
-                        {c.is_admin ? '🛡️' : c.is_anonymous ? '?' : (c.author_name || 'U')[0]?.toUpperCase()}
+                        ${c.is_admin ? 'bg-gradient-to-br from-amber-500 to-orange-600' : c.is_anonymous ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gradient-to-br from-indigo-400 to-violet-500'}`}>
+                        {c.is_admin ? <ShieldCheck size={12} /> : c.is_anonymous ? '?' : (c.author_name || 'U')[0]?.toUpperCase()}
                       </div>
-                      <div className={`flex-1 rounded-xl px-3 py-2 ${c.is_admin ? 'bg-indigo-600/10 border border-indigo-500/30' : 'bg-gray-800/60'}`}>
+                      <div className={`flex-1 rounded-xl px-3 py-2 ${c.is_admin ? 'bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800' : 'bg-gray-50 dark:bg-gray-900'}`}>
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1.5">
-                            <p className="text-xs text-white font-medium">
+                            <p className="text-xs text-gray-900 dark:text-white font-medium">
                               {c.is_admin ? 'StudyFlow Admin' : c.is_anonymous ? 'Anonymous' : (c.author_name || 'Unknown')}
                             </p>
                             {c.is_admin && (
@@ -327,13 +338,13 @@ export default function Feedback() {
                             <button
                               onClick={() => deleteComment(post.id, c.id)}
                               aria-label="Delete comment"
-                              className="text-gray-600 hover:text-red-400 text-[10px] transition"
+                              className="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                             >
-                              ✕
+                              <X size={11} />
                             </button>
                           )}
                         </div>
-                        <p className="text-xs text-gray-300 mt-0.5">{c.content}</p>
+                        <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">{c.content}</p>
                       </div>
                     </div>
                   ))}
@@ -347,18 +358,18 @@ export default function Feedback() {
                         onKeyDown={e => e.key === 'Enter' && handleAddComment(post.id)}
                         placeholder="Write a comment..."
                         aria-label="Write a comment"
-                        className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition"
+                        className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
                       />
                       <button
                         onClick={() => handleAddComment(post.id)}
                         disabled={!commentDrafts[post.id]?.trim() || commentPosting === post.id}
-                        className="text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-3 py-2 rounded-xl transition"
+                        className="text-xs bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white px-3 py-2 rounded-xl transition-colors flex items-center justify-center min-w-[52px]"
                       >
-                        {commentPosting === post.id ? '…' : 'Reply'}
+                        {commentPosting === post.id ? <Loader2 size={13} className="animate-spin" /> : 'Reply'}
                       </button>
                     </div>
                     {commentErrors[post.id] && (
-                      <p className="text-red-400 text-[10px] mt-1">{commentErrors[post.id]}</p>
+                      <p className="text-red-600 dark:text-red-400 text-[10px] mt-1">{commentErrors[post.id]}</p>
                     )}
                   </div>
                 </div>
@@ -370,29 +381,31 @@ export default function Feedback() {
 
       {confirmDeletePost && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           role="dialog"
           aria-modal="true"
           onClick={(e) => e.target === e.currentTarget && setConfirmDeletePost(null)}
         >
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-xl">
             <div className="text-center">
-              <p className="text-3xl mb-3">🗑️</p>
-              <h3 className="text-white font-semibold text-lg">Delete this post?</h3>
-              <p className="text-gray-400 text-sm mt-1">This cannot be undone.</p>
+              <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center justify-center mx-auto mb-3">
+                <Trash2 size={20} className="text-red-500 dark:text-red-400" />
+              </div>
+              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Delete this post?</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">This cannot be undone.</p>
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirmDeletePost(null)}
                 disabled={deletingPost}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl py-2 text-sm transition disabled:opacity-40"
+                className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl py-2 text-sm font-medium transition-colors disabled:opacity-40"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeletePost}
                 disabled={deletingPost}
-                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl py-2 text-sm transition disabled:opacity-40"
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl py-2 text-sm transition-colors disabled:opacity-40"
               >
                 {deletingPost ? 'Deleting…' : 'Yes, Delete'}
               </button>
