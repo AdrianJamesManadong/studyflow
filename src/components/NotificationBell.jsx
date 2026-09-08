@@ -1,10 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+
+function getInitialPermission() {
+  if (typeof window === 'undefined' || !('Notification' in window)) return 'denied'
+  return Notification.permission
+}
 
 export default function NotificationBell() {
-  const [permission, setPermission] = useState(Notification.permission)
+  const [permission, setPermission] = useState(getInitialPermission)
   const [showTooltip, setShowTooltip] = useState(false)
+  const supported = typeof window !== 'undefined' && 'Notification' in window
 
   async function requestPermission() {
+    if (!supported) return
     const result = await Notification.requestPermission()
     setPermission(result)
     if (result === 'granted') {
@@ -14,6 +21,8 @@ export default function NotificationBell() {
       })
     }
   }
+
+  if (!supported) return null
 
   const icon = permission === 'granted' ? '🔔' : '🔕'
   const label = permission === 'granted' ? 'Notifications on' : 'Enable notifications'

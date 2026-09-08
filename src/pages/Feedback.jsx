@@ -4,11 +4,12 @@ import { useFeedback } from '../hooks/useFeedback'
 import {
   AlertTriangle,
   MessageSquare,
-  Heart,
+  ThumbsUp,
   ShieldCheck,
-  X,
+  MoreHorizontal,
   Trash2,
   Loader2,
+  Send,
 } from 'lucide-react'
 
 const CATEGORIES = [
@@ -42,6 +43,16 @@ function timeAgo(iso) {
   return 'just now'
 }
 
+function Avatar({ name, isAnonymous, size = 'md' }) {
+  const dims = size === 'sm' ? 'w-6 h-6 text-[10px]' : size === 'lg' ? 'w-10 h-10 text-sm' : 'w-8 h-8 text-xs'
+  return (
+    <div className={`rounded-full flex items-center justify-center font-bold flex-shrink-0 ${dims}
+      ${isAnonymous ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white'}`}>
+      {isAnonymous ? '?' : (name || 'U')[0]?.toUpperCase()}
+    </div>
+  )
+}
+
 export default function Feedback() {
   const { user } = useAuth()
   const {
@@ -64,6 +75,7 @@ export default function Feedback() {
   const [commentErrors, setCommentErrors]   = useState({})
   const [confirmDeletePost, setConfirmDeletePost] = useState(null)
   const [deletingPost, setDeletingPost]     = useState(false)
+  const [openMenuId, setOpenMenuId]         = useState(null)
 
   const commentInputRef = useRef(null)
 
@@ -73,6 +85,14 @@ export default function Feedback() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [confirmDeletePost, deletingPost])
+
+  // Close the "···" post menu on any outside click
+  useEffect(() => {
+    if (!openMenuId) return
+    const onDocClick = () => setOpenMenuId(null)
+    document.addEventListener('click', onDocClick)
+    return () => document.removeEventListener('click', onDocClick)
+  }, [openMenuId])
 
   async function handlePost() {
     if (!content.trim()) return
@@ -134,60 +154,65 @@ export default function Feedback() {
 
   if (loading) {
     return (
-      <div className="space-y-4 animate-pulse max-w-3xl">
-        <div className="h-8 w-48 bg-gray-200 dark:bg-gray-800 rounded-lg" />
-        <div className="h-32 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl" />
-        {[1, 2, 3].map(i => <div key={i} className="h-28 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl" />)}
+      <div className="space-y-4 animate-pulse max-w-2xl mx-auto">
+        <div className="h-28 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg" />
+        {[1, 2, 3].map(i => <div key={i} className="h-32 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg" />)}
       </div>
     )
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-4 max-w-2xl mx-auto">
 
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">Feedback & Reports</h2>
-        <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+      <div className="px-1">
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Feedback & Reports</h2>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
           Share ideas, report bugs, and see what other students are saying.
         </p>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 space-y-3 shadow-sm">
-        <textarea
-          value={content}
-          onChange={e => setContent(e.target.value.slice(0, MAX_LEN))}
-          placeholder="What's on your mind? Report a bug, suggest a feature, or just say hi..."
-          rows={3}
-          aria-label="Write feedback"
-          className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition resize-none text-sm"
-        />
-        <div className="flex justify-end -mt-1">
+      {/* Composer */}
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3 shadow-sm">
+        <div className="flex items-start gap-2.5">
+          <Avatar name={user?.name} isAnonymous={false} />
+          <textarea
+            value={content}
+            onChange={e => setContent(e.target.value.slice(0, MAX_LEN))}
+            placeholder={`What's on your mind${user?.name ? `, ${user.name.split(' ')[0]}` : ''}?`}
+            rows={2}
+            aria-label="Write feedback"
+            className="flex-1 bg-gray-100 dark:bg-gray-900 border-none rounded-2xl px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-950/40 transition resize-none text-sm"
+          />
+        </div>
+        <div className="flex justify-end">
           <span className={`text-[10px] ${remaining <= 20 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}>
             {remaining} left
           </span>
         </div>
 
+        <div className="h-px bg-gray-100 dark:bg-gray-700" />
+
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {CATEGORIES.map(c => (
               <button
                 key={c.id}
                 onClick={() => setCategory(c.id)}
                 aria-pressed={category === c.id}
                 className={`text-xs px-3 py-1.5 rounded-full border capitalize transition-colors flex items-center gap-1.5
-                  ${category === c.id ? c.style : 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+                  ${category === c.id ? c.style : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
                 {c.label}
               </button>
             ))}
 
-            <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 ml-2 cursor-pointer select-none">
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 ml-1 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={isAnonymous}
                 onChange={e => setIsAnonymous(e.target.checked)}
-                className="accent-indigo-600 w-3.5 h-3.5"
+                className="accent-blue-600 w-3.5 h-3.5"
               />
               Post anonymously
             </label>
@@ -196,7 +221,7 @@ export default function Feedback() {
           <button
             onClick={handlePost}
             disabled={!content.trim() || posting}
-            className="bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2 rounded-xl transition-colors shadow-md shadow-indigo-200 dark:shadow-indigo-950/40"
+            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-1.5 rounded-full transition-colors"
           >
             {posting ? 'Posting…' : 'Post'}
           </button>
@@ -205,11 +230,12 @@ export default function Feedback() {
         {postError && <p className="text-red-600 dark:text-red-400 text-xs">{postError}</p>}
       </div>
 
-      <div className="flex gap-2 flex-wrap">
+      {/* Filters */}
+      <div className="flex gap-2 flex-wrap px-1">
         <button
           onClick={() => setFilter('all')}
-          className={`px-4 py-1.5 rounded-xl text-sm font-medium transition-colors
-            ${filter === 'all' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 dark:shadow-indigo-950/40' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-600 shadow-sm'}`}
+          className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors
+            ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
         >
           All
         </button>
@@ -217,8 +243,8 @@ export default function Feedback() {
           <button
             key={c.id}
             onClick={() => setFilter(c.id)}
-            className={`px-4 py-1.5 rounded-xl text-sm font-medium transition-colors capitalize
-              ${filter === c.id ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 dark:shadow-indigo-950/40' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-600 shadow-sm'}`}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors capitalize
+              ${filter === c.id ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
           >
             {c.label}
           </button>
@@ -226,90 +252,125 @@ export default function Feedback() {
       </div>
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl px-4 py-2.5 text-xs text-red-600 dark:text-red-400 flex items-center gap-1.5">
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2.5 text-xs text-red-600 dark:text-red-400 flex items-center gap-1.5">
           <AlertTriangle size={13} /> {error}
         </div>
       )}
 
       {filtered.length === 0 && (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-12 text-center shadow-sm">
-          <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800 flex items-center justify-center mx-auto mb-3">
-            <MessageSquare size={20} className="text-indigo-500 dark:text-indigo-400" />
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-12 text-center shadow-sm">
+          <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-800 flex items-center justify-center mx-auto mb-3">
+            <MessageSquare size={20} className="text-blue-500 dark:text-blue-400" />
           </div>
           <p className="text-gray-900 dark:text-white font-medium mb-1">No posts yet</p>
           <p className="text-gray-500 dark:text-gray-400 text-sm">Be the first to share feedback!</p>
         </div>
       )}
 
+      {/* Feed */}
       <div className="space-y-3">
         {filtered.map(post => {
-          const meta        = categoryMeta(post.category)
-          const liked        = likedIds.has(post.id)
-          const isOwn        = post.user_id === user?.id
-          const displayName  = post.is_anonymous ? 'Anonymous' : (post.author_name || 'Unknown')
-          const isExpanded   = expandedId === post.id
+          const meta          = categoryMeta(post.category)
+          const liked         = likedIds.has(post.id)
+          const isOwn         = post.user_id === user?.id
+          const displayName   = post.is_anonymous ? 'Anonymous' : (post.author_name || 'Unknown')
+          const isExpanded    = expandedId === post.id
           const commentsLoading = commentsLoadingId === post.id
-          const postComments = comments[post.id] ?? []
+          const postComments  = comments[post.id] ?? []
+          const menuOpen      = openMenuId === post.id
 
           return (
-            <div key={post.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 hover:border-gray-300 dark:hover:border-gray-600 shadow-sm transition-colors">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
-                    ${post.is_anonymous ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white'}`}>
-                    {post.is_anonymous ? '?' : displayName[0]?.toUpperCase()}
+            <div key={post.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm">
+              <div className="p-4 pb-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <Avatar name={displayName} isAnonymous={post.is_anonymous} />
+                    <div>
+                      <p className="text-sm text-gray-900 dark:text-white font-semibold leading-tight">{displayName}</p>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-0.5">
+                        {timeAgo(post.created_at)}
+                        <span className="text-gray-300 dark:text-gray-600">·</span>
+                        <span className="flex items-center gap-1">
+                          <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                          {meta.label}
+                        </span>
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-900 dark:text-white font-medium">{displayName}</p>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500">{timeAgo(post.created_at)}</p>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-2">
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full border capitalize flex items-center gap-1 ${meta.style}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-                    {meta.label}
-                  </span>
                   {isOwn && (
-                    <button
-                      onClick={() => setConfirmDeletePost(post)}
-                      className="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                      aria-label="Delete post"
-                      title="Delete post"
-                    >
-                      <X size={13} />
-                    </button>
+                    <div className="relative">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setOpenMenuId(menuOpen ? null : post.id) }}
+                        className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                        aria-label="Post options"
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
+                      {menuOpen && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 top-8 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[140px]"
+                        >
+                          <button
+                            onClick={() => { setOpenMenuId(null); setConfirmDeletePost(post) }}
+                            className="w-full text-left px-3.5 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center gap-2 transition-colors"
+                          >
+                            <Trash2 size={14} /> Delete post
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
+
+                <p className="text-gray-800 dark:text-gray-200 text-sm mt-3 whitespace-pre-wrap leading-relaxed">{post.content}</p>
               </div>
 
-              <p className="text-gray-800 dark:text-gray-200 text-sm mt-3 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+              {(post.like_count > 0 || post.comment_count > 0) && (
+                <div className="flex items-center justify-between px-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {post.like_count > 0 ? (
+                    <span className="flex items-center gap-1">
+                      <span className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+                        <ThumbsUp size={9} className="text-white" fill="currentColor" />
+                      </span>
+                      {post.like_count}
+                    </span>
+                  ) : <span />}
+                  {post.comment_count > 0 && (
+                    <span>{post.comment_count} comment{post.comment_count !== 1 ? 's' : ''}</span>
+                  )}
+                </div>
+              )}
 
-              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+              <div className="mx-4 h-px bg-gray-100 dark:bg-gray-700" />
+
+              <div className="flex items-center px-2 py-1">
                 <button
                   onClick={() => toggleLike(post.id)}
                   aria-pressed={liked}
                   aria-label={liked ? 'Unlike post' : 'Like post'}
-                  className={`flex items-center gap-1.5 text-xs transition-colors ${liked ? 'text-pink-600 dark:text-pink-400' : 'text-gray-400 dark:text-gray-500 hover:text-pink-600 dark:hover:text-pink-400'}`}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold transition-colors
+                    ${liked ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'} hover:bg-gray-50 dark:hover:bg-gray-700`}
                 >
-                  <Heart size={13} fill={liked ? 'currentColor' : 'none'} />
-                  {post.like_count > 0 ? post.like_count : 'Like'}
+                  <ThumbsUp size={16} fill={liked ? 'currentColor' : 'none'} />
+                  Like
                 </button>
                 <button
                   onClick={() => toggleExpand(post.id)}
                   aria-expanded={isExpanded}
-                  className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                 >
-                  <MessageSquare size={13} /> {post.comment_count > 0 ? post.comment_count : 'Comment'}
+                  <MessageSquare size={16} /> Comment
                 </button>
               </div>
 
               {isExpanded && (
-                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-3">
+                <div className="px-4 pb-4 pt-1 space-y-3">
                   {commentsLoading && (
                     <div className="space-y-2">
                       {[1, 2].map(i => (
-                        <div key={i} className="h-8 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />
+                        <div key={i} className="h-8 bg-gray-100 dark:bg-gray-700 rounded-2xl animate-pulse" />
                       ))}
                     </div>
                   )}
@@ -319,58 +380,62 @@ export default function Feedback() {
                   )}
 
                   {!commentsLoading && postComments.map(c => (
-                    <div key={c.id} className="flex items-start gap-2.5">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0
-                        ${c.is_admin ? 'bg-gradient-to-br from-amber-500 to-orange-600' : c.is_anonymous ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gradient-to-br from-indigo-400 to-violet-500'}`}>
-                        {c.is_admin ? <ShieldCheck size={12} /> : c.is_anonymous ? '?' : (c.author_name || 'U')[0]?.toUpperCase()}
-                      </div>
-                      <div className={`flex-1 rounded-xl px-3 py-2 ${c.is_admin ? 'bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800' : 'bg-gray-50 dark:bg-gray-900'}`}>
-                        <div className="flex items-center justify-between gap-2">
+                    <div key={c.id} className="flex items-start gap-2">
+                      <Avatar name={c.author_name} isAnonymous={c.is_anonymous} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <div className={`inline-block rounded-2xl px-3 py-2 max-w-full ${c.is_admin ? 'bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-900'}`}>
                           <div className="flex items-center gap-1.5">
-                            <p className="text-xs text-gray-900 dark:text-white font-medium">
+                            <p className="text-xs text-gray-900 dark:text-white font-semibold">
                               {c.is_admin ? 'StudyFlow Admin' : c.is_anonymous ? 'Anonymous' : (c.author_name || 'Unknown')}
                             </p>
-                            {c.is_admin && (
-                              <span className="text-[9px] bg-indigo-600 text-white px-1.5 py-0.5 rounded-full">Admin</span>
-                            )}
+                            {c.is_admin && <ShieldCheck size={11} className="text-blue-600 dark:text-blue-400 flex-shrink-0" />}
                           </div>
+                          <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">{c.content}</p>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 ml-1">
+                          {c.created_at && (
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500">{timeAgo(c.created_at)}</span>
+                          )}
                           {c.user_id === user?.id && (
                             <button
                               onClick={() => deleteComment(post.id, c.id)}
                               aria-label="Delete comment"
-                              className="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                              className="text-[10px] text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 font-medium transition-colors"
                             >
-                              <X size={11} />
+                              Delete
                             </button>
                           )}
                         </div>
-                        <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">{c.content}</p>
                       </div>
                     </div>
                   ))}
 
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        ref={isExpanded ? commentInputRef : null}
-                        value={commentDrafts[post.id] || ''}
-                        onChange={e => setCommentDrafts(prev => ({ ...prev, [post.id]: e.target.value }))}
-                        onKeyDown={e => e.key === 'Enter' && handleAddComment(post.id)}
-                        placeholder="Write a comment..."
-                        aria-label="Write a comment"
-                        className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
-                      />
-                      <button
-                        onClick={() => handleAddComment(post.id)}
-                        disabled={!commentDrafts[post.id]?.trim() || commentPosting === post.id}
-                        className="text-xs bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white px-3 py-2 rounded-xl transition-colors flex items-center justify-center min-w-[52px]"
-                      >
-                        {commentPosting === post.id ? <Loader2 size={13} className="animate-spin" /> : 'Reply'}
-                      </button>
+                  <div className="flex items-start gap-2 pt-1">
+                    <Avatar name={user?.name} isAnonymous={false} size="sm" />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={isExpanded ? commentInputRef : null}
+                          value={commentDrafts[post.id] || ''}
+                          onChange={e => setCommentDrafts(prev => ({ ...prev, [post.id]: e.target.value }))}
+                          onKeyDown={e => e.key === 'Enter' && handleAddComment(post.id)}
+                          placeholder="Write a comment..."
+                          aria-label="Write a comment"
+                          className="flex-1 bg-gray-100 dark:bg-gray-900 border-none rounded-full px-4 py-2 text-xs text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-950/40 transition"
+                        />
+                        <button
+                          onClick={() => handleAddComment(post.id)}
+                          disabled={!commentDrafts[post.id]?.trim() || commentPosting === post.id}
+                          aria-label="Send comment"
+                          className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white transition-colors"
+                        >
+                          {commentPosting === post.id ? <Loader2 size={14} className="animate-spin" /> : <Send size={13} />}
+                        </button>
+                      </div>
+                      {commentErrors[post.id] && (
+                        <p className="text-red-600 dark:text-red-400 text-[10px] mt-1 ml-1">{commentErrors[post.id]}</p>
+                      )}
                     </div>
-                    {commentErrors[post.id] && (
-                      <p className="text-red-600 dark:text-red-400 text-[10px] mt-1">{commentErrors[post.id]}</p>
-                    )}
                   </div>
                 </div>
               )}
@@ -405,7 +470,7 @@ export default function Feedback() {
               <button
                 onClick={handleDeletePost}
                 disabled={deletingPost}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl py-2 text-sm transition-colors disabled:opacity-40"
+                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl py-2 text-sm transition-colors disabled:opacity-40"
               >
                 {deletingPost ? 'Deleting…' : 'Yes, Delete'}
               </button>

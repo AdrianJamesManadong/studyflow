@@ -50,6 +50,7 @@ export default function Notes() {
   const [confirmDelete, setConfirmDelete] = useState(null)   // Fix: confirm before delete
   const [deleting, setDeleting]           = useState(false)
   const [confirmBack, setConfirmBack]     = useState(false)  // Fix: warn on unsaved changes
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
 
   // Fix: debounce search input by 300ms
   useEffect(() => {
@@ -61,12 +62,13 @@ export default function Notes() {
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== 'Escape') return
-      if (confirmDelete) { setConfirmDelete(null); return }
-      if (confirmBack)   { setConfirmBack(false);  return }
+      if (confirmDelete)    { setConfirmDelete(null);    return }
+      if (confirmDeleteAll) { setConfirmDeleteAll(false); return }
+      if (confirmBack)      { setConfirmBack(false);      return }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [confirmDelete, confirmBack])
+  }, [confirmDelete, confirmDeleteAll, confirmBack])
 
   function openNew() {
     setEditing(null)
@@ -120,6 +122,22 @@ export default function Notes() {
       if (view === 'editor') setView('list')
     } catch (err) {
       setError(err.message || 'Failed to delete note. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  // Deletes ALL notes (not just the filtered/visible ones)
+  async function handleDeleteAll() {
+    setDeleting(true)
+    setError('')
+    try {
+      for (const note of notes) {
+        await deleteNote(note.id)
+      }
+      setConfirmDeleteAll(false)
+    } catch (err) {
+      setError(err.message || 'Failed to delete all notes. Please try again.')
     } finally {
       setDeleting(false)
     }
@@ -290,12 +308,22 @@ export default function Notes() {
               {notes.length} note{notes.length !== 1 ? 's' : ''}
             </p>
           </div>
-          <button
-            onClick={openNew}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
-          >
-            <Plus size={15} /> New Note
-          </button>
+          <div className="flex items-center gap-2">
+            {notes.length > 0 && (
+              <button
+                onClick={() => { setError(''); setConfirmDeleteAll(true) }}
+                className="text-sm text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 border border-gray-200 dark:border-gray-700 hover:border-red-200 dark:hover:border-red-800 px-4 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+              >
+                Delete All
+              </button>
+            )}
+            <button
+              onClick={openNew}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+            >
+              <Plus size={15} /> New Note
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-3 flex-wrap">
@@ -403,6 +431,44 @@ export default function Notes() {
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg py-2 text-sm transition-colors disabled:opacity-40"
               >
                 {deleting ? 'Deleting…' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All confirm modal */}
+      {confirmDeleteAll && (
+        <div
+          className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={(e) => e.target === e.currentTarget && setConfirmDeleteAll(false)}
+        >
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-xl">
+            <div className="text-center">
+              <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center justify-center mx-auto mb-3">
+                <Trash2 size={20} className="text-red-500 dark:text-red-400" />
+              </div>
+              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Delete All Notes?</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+                This will permanently delete all{' '}
+                <span className="text-gray-900 dark:text-white font-medium">{notes.length}</span> note{notes.length !== 1 ? 's' : ''}. This cannot be undone.
+              </p>
+              {error && <p className="text-red-600 dark:text-red-400 text-xs mt-2">{error}</p>}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDeleteAll(false)}
+                disabled={deleting}
+                className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                disabled={deleting}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg py-2 text-sm transition-colors disabled:opacity-40"
+              >
+                {deleting ? 'Deleting…' : 'Yes, Delete All'}
               </button>
             </div>
           </div>

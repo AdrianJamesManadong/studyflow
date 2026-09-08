@@ -13,6 +13,35 @@ const COLORS = [
   { name: 'orange', bg: 'bg-orange-500', light: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-400' },
 ]
 
+// Maps the row coming back from Supabase (snake_case) into the shape
+// the Subjects component expects (camelCase, days as an array).
+function fromRow(row) {
+  return {
+    ...row,
+    professor: row.professor || '',
+    units: row.units,
+    room: row.room || '',
+    days: row.days || [],
+    startTime: row.start_time || '',
+    endTime: row.end_time || '',
+  }
+}
+
+// Maps the component's payload into DB column names.
+function toRow(payload) {
+  const color = COLORS.find(c => c.name === payload.color) || COLORS[0]
+  return {
+    name: payload.name,
+    color,
+    professor: payload.professor || null,
+    units: payload.units ?? null,
+    room: payload.room || null,
+    days: payload.days || [],
+    start_time: payload.startTime || null,
+    end_time: payload.endTime || null,
+  }
+}
+
 export function useSubjects() {
   const [subjects, setSubjects] = useState([])
   const [loading, setLoading] = useState(true)
@@ -21,38 +50,40 @@ export function useSubjects() {
     fetchSubjects()
   }, [])
 
- async function fetchSubjects() {
-  setLoading(true)
-  const { data: { user } } = await supabase.auth.getUser() // 👈 add this
-  const { data, error } = await supabase
-    .from('subjects')
-    .select('*')
-    .eq('user_id', user.id)                                // 👈 add this
-    .order('created_at', { ascending: true })
-  if (!error) setSubjects(data || [])
-  setLoading(false)
-}
-
-  async function addSubject(name, colorName) {
-  const color = COLORS.find(c => c.name === colorName) || COLORS[0]
-  const { data: { user } } = await supabase.auth.getUser()
-  const { data, error } = await supabase
-    .from('subjects')
-    .insert({ name, color, user_id: user.id })
-    .select()
-    .single()
-  if (!error) setSubjects(prev => [...prev, data])
-}
-
-  async function editSubject(id, name, colorName) {
-    const color = COLORS.find(c => c.name === colorName) || COLORS[0]
+  async function fetchSubjects() {
+    setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
     const { data, error } = await supabase
       .from('subjects')
-      .update({ name, color })
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+    if (!error) setSubjects((data || []).map(fromRow))
+    setLoading(false)
+  }
+
+  // payload: { name, color, professor, units, room, days, startTime, endTime }
+  async function addSubject(payload) {
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data, error } = await supabase
+      .from('subjects')
+      .insert({ ...toRow(payload), user_id: user.id })
+      .select()
+      .single()
+    if (error) throw error
+    setSubjects(prev => [...prev, fromRow(data)])
+  }
+
+  // payload: { name, color, professor, units, room, days, startTime, endTime }
+  async function editSubject(id, payload) {
+    const { data, error } = await supabase
+      .from('subjects')
+      .update(toRow(payload))
       .eq('id', id)
       .select()
       .single()
-    if (!error) setSubjects(prev => prev.map(s => s.id === id ? data : s))
+    if (error) throw error
+    setSubjects(prev => prev.map(s => s.id === id ? fromRow(data) : s))
   }
 
   async function deleteSubject(id) {
@@ -60,7 +91,8 @@ export function useSubjects() {
       .from('subjects')
       .delete()
       .eq('id', id)
-    if (!error) setSubjects(prev => prev.filter(s => s.id !== id))
+    if (error) throw error
+    setSubjects(prev => prev.filter(s => s.id !== id))
   }
 
   return { subjects, loading, addSubject, editSubject, deleteSubject, COLORS }
