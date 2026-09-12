@@ -27,7 +27,7 @@ function ProfileSkeleton() {
           animation: shimmer 1.4s infinite linear;
         }
       `}</style>
-      <div className="max-w-2xl space-y-4">
+      <div className="max-w-2xl mx-auto space-y-4">
         <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-6 flex items-center gap-5 shadow-sm">
           <Skeleton className="w-20 h-20 rounded-full flex-shrink-0" />
           <div className="flex-1 space-y-2">
@@ -248,7 +248,7 @@ export default function Profile() {
         .avatar-wrapper:hover .avatar-hover-overlay { opacity: 1; }
       `}</style>
 
-      <div className="max-w-2xl space-y-4">
+      <div className="max-w-2xl mx-auto space-y-4">
 
         {/* Header */}
         <div>

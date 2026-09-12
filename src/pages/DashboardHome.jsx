@@ -2,6 +2,7 @@ import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { useSubjects } from '../hooks/useSubjects'
 import { useAssignments } from '../hooks/useAssignments'
+import { useReminders } from '../hooks/useReminders'
 import { useNotes } from '../hooks/useNotes'
 import { useGrades } from '../hooks/useGrades'
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react'
@@ -14,6 +15,7 @@ import {
   NotebookPen,
   Timer,
   Bot,
+  Bell,
   Sparkles,
   AlertTriangle,
   ShieldCheck,
@@ -38,6 +40,7 @@ const COLOR_MAP = {
   amber:   { card: 'border-amber-100 hover:border-amber-300 dark:border-amber-900 dark:hover:border-amber-700',     glow: 'rgba(245,158,11,0.10)',  accent: 'text-amber-600 dark:text-amber-400',   bar: 'bg-amber-500'   },
   emerald: { card: 'border-emerald-100 hover:border-emerald-300 dark:border-emerald-900 dark:hover:border-emerald-700', glow: 'rgba(34,197,94,0.10)',   accent: 'text-emerald-600 dark:text-emerald-400', bar: 'bg-emerald-500' },
   violet:  { card: 'border-violet-100 hover:border-violet-300 dark:border-violet-900 dark:hover:border-violet-700',   glow: 'rgba(124,58,237,0.10)',  accent: 'text-violet-600 dark:text-violet-400',  bar: 'bg-violet-600'  },
+  rose:    { card: 'border-rose-100 hover:border-rose-300 dark:border-rose-900 dark:hover:border-rose-700',       glow: 'rgba(244,63,94,0.10)',   accent: 'text-rose-600 dark:text-rose-400',     bar: 'bg-rose-500'    },
 }
 
 /* ─── stable ann config (outside component) ─── */
@@ -52,6 +55,7 @@ const ANN_CONFIG = {
 const QUICK_ACTIONS = [
   { label: 'Add Subject',    Icon: BookOpen,      path: '/dashboard/subjects'    },
   { label: 'New Assignment', Icon: ClipboardList, path: '/dashboard/assignments' },
+  { label: 'Add Reminder',   Icon: Bell,          path: '/dashboard/reminders'   },
   { label: 'Log Grade',      Icon: BarChart3,     path: '/dashboard/grades'      },
   { label: 'Write Note',     Icon: NotebookPen,   path: '/dashboard/notes'       },
   { label: 'Pomodoro Timer', Icon: Timer,         path: '/dashboard/pomodoro'    },
@@ -86,6 +90,7 @@ export default function DashboardHome() {
   const navigate = useNavigate()
   const { subjects, loading: subjectsLoading } = useSubjects()
   const { assignments, loading: assignmentsLoading, markDone } = useAssignments()
+  const { reminders, loading: remindersLoading, toggleDone: toggleReminderDone } = useReminders()
   const { notes, loading: notesLoading } = useNotes()
   // FIX #1: pull the raw `grades` array out too, so we have a stable, correct
   // dependency for the average-grade memo below (previously only `assignments`
@@ -93,13 +98,14 @@ export default function DashboardHome() {
   // in the same tick left this card showing a stale average).
   const { grades, getOverallAverage, getLetterGrade, loading: gradesLoading } = useGrades()
 
-  const isLoading = subjectsLoading || assignmentsLoading || notesLoading || gradesLoading
+  const isLoading = subjectsLoading || assignmentsLoading || remindersLoading || notesLoading || gradesLoading
 
   const [announcements, setAnnouncements] = useState([])
   const [annLoading, setAnnLoading]       = useState(true)
   const [annError, setAnnError]           = useState(false)
   const [hoveredStat, setHoveredStat]     = useState(null)
   const [completingId, setCompletingId]   = useState(null)
+  const [completingReminderId, setCompletingReminderId] = useState(null)
 
   // Fix: use a ref to track mount state — prevents setState on unmounted component
   const isMounted = useRef(true)
@@ -161,6 +167,38 @@ export default function DashboardHome() {
     [assignments, todayStartMs]
   )
 
+  // Reminders: same shape of derived data as assignments, but due_date is optional
+  const pendingReminders = useMemo(
+    () => reminders.filter(r => !r.is_done),
+    [reminders]
+  )
+
+  const overdueReminders = useMemo(
+    () => {
+      const t = new Date(todayStartMs)
+      return pendingReminders.filter(r => r.due_date && new Date(r.due_date) < t)
+    },
+    [pendingReminders, todayStartMs]
+  )
+
+  const dueTodayReminders = useMemo(
+    () => pendingReminders.filter(r => {
+      if (!r.due_date) return false
+      const d = new Date(r.due_date)
+      d.setHours(0, 0, 0, 0)
+      return d.getTime() === todayStartMs
+    }),
+    [pendingReminders, todayStartMs]
+  )
+
+  const upcomingReminders = useMemo(
+    () => reminders
+      .filter(r => !r.is_done && r.due_date && new Date(r.due_date) >= new Date(todayStartMs))
+      .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
+      .slice(0, 5),
+    [reminders, todayStartMs]
+  )
+
   // FIX #1: `grades` is now in the dependency array. getOverallAverage() itself
   // is still called inside the memo rather than being a dep (its reference may
   // not be stable if useGrades doesn't wrap it in useCallback), but now the
@@ -203,6 +241,20 @@ export default function DashboardHome() {
     }
   }, [markDone])
 
+  // Same unmount-safe pattern as handleMarkDone, for reminders' toggleDone
+  const handleToggleReminder = useCallback(async (e, id) => {
+    e.stopPropagation()
+    if (typeof toggleReminderDone !== 'function') return
+    setCompletingReminderId(id)
+    try {
+      await toggleReminderDone(id)
+    } catch (err) {
+      console.error('Failed to mark reminder done:', err)
+    } finally {
+      if (isMounted.current) setCompletingReminderId(null)
+    }
+  }, [toggleReminderDone])
+
   const stats = useMemo(() => [
     {
       label: 'Subjects',
@@ -226,6 +278,21 @@ export default function DashboardHome() {
       subColor: overdueAssignments.length > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400',
     },
     {
+      label: 'Reminders',
+      value: pendingReminders.length,
+      Icon: Bell,
+      color: 'rose',
+      path: '/dashboard/reminders',
+      sub: overdueReminders.length > 0
+        ? `${overdueReminders.length} overdue`
+        : dueTodayReminders.length > 0
+          ? `${dueTodayReminders.length} due today`
+          : pendingReminders.length === 0
+            ? '→ Add a reminder'
+            : 'All caught up!',
+      subColor: overdueReminders.length > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400',
+    },
+    {
       label: 'Average Grade',
       value: overallAverage ? `${overallAverage}%` : '—',
       Icon: BarChart3,
@@ -242,7 +309,7 @@ export default function DashboardHome() {
       path: '/dashboard/notes',
       sub: notes.length === 0 ? '→ Start writing' : `${notes.length} saved`,
     },
-  ], [subjects, pendingAssignments, overdueAssignments, dueTodayAssignments, overallAverage, letterGrade, notes])
+  ], [subjects, pendingAssignments, overdueAssignments, dueTodayAssignments, pendingReminders, overdueReminders, dueTodayReminders, overallAverage, letterGrade, notes])
 
   const firstName = useMemo(() => getFirstName(user), [user])
 
@@ -296,9 +363,9 @@ export default function DashboardHome() {
               {' · '}Here's what's going on with your studies.
             </p>
           </div>
-          {overdueAssignments.length > 0 && (
+          {(overdueAssignments.length > 0 || overdueReminders.length > 0) && (
             <button
-              onClick={() => navigate('/dashboard/assignments')}
+              onClick={() => navigate(overdueAssignments.length > 0 ? '/dashboard/assignments' : '/dashboard/reminders')}
               className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm px-4 py-2 rounded-xl hover:bg-red-100 dark:hover:bg-red-950/60 hover:border-red-300 dark:hover:border-red-700 transition-all duration-200 hover:-translate-y-0.5"
             >
               <AlertTriangle
@@ -306,7 +373,7 @@ export default function DashboardHome() {
                 size={16}
                 style={{ animation: 'pulse-dot 1.5s ease-in-out infinite', display: 'inline-block' }}
               />
-              {overdueAssignments.length} overdue
+              {overdueAssignments.length + overdueReminders.length} overdue
             </button>
           )}
         </div>
@@ -367,7 +434,7 @@ export default function DashboardHome() {
         )}
 
         {/* ── Stats ── */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
           {stats.map((stat, i) => {
             const c = COLOR_MAP[stat.color]
             const isHovered = hoveredStat === stat.label
@@ -416,7 +483,7 @@ export default function DashboardHome() {
         {/* ── Quick Actions ── */}
         <div style={fadeUp(340)}>
           <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">Quick Actions</h3>
-          <div className="grid grid-cols-3 gap-3 lg:grid-cols-6">
+          <div className="grid grid-cols-3 gap-3 lg:grid-cols-7">
             {QUICK_ACTIONS.map((action, i) => (
               <button
                 key={action.label}
@@ -538,6 +605,111 @@ export default function DashboardHome() {
                           a.priority === 'medium' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800' :
                           'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'}`}>
                         {a.priority}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Upcoming Reminders ── */}
+        <div style={fadeUp(600)}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
+              Upcoming Reminders
+            </h3>
+            {upcomingReminders.length > 0 && (
+              <button
+                onClick={() => navigate('/dashboard/reminders')}
+                className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors flex items-center gap-1 group"
+              >
+                View all
+                <ArrowRight aria-hidden="true" size={14} className="transition-transform duration-200 group-hover:translate-x-0.5" />
+              </button>
+            )}
+          </div>
+
+          {upcomingReminders.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-10 text-center shadow-sm">
+              <Bell
+                aria-hidden="true"
+                size={36}
+                className="mb-3 block mx-auto text-rose-500 dark:text-rose-400"
+                style={{ animation: 'float 3s ease-in-out infinite' }}
+              />
+              <p className="text-gray-900 dark:text-white font-semibold">Nothing to remember right now</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">No upcoming reminders. Add one to stay ahead.</p>
+              <button
+                onClick={() => navigate('/dashboard/reminders')}
+                className="mt-4 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-4 py-2 rounded-xl transition-all hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:-translate-y-0.5"
+              >
+                + Add Reminder
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {upcomingReminders.map((r, i) => {
+                const { label: daysLabel, color: daysColor, bg: daysBg } = getDaysUntil(r.due_date)
+                const isCompleting = completingReminderId === r.id
+                return (
+                  <div
+                    key={r.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate('/dashboard/reminders')}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        navigate('/dashboard/reminders')
+                      }
+                    }}
+                    className="row-item bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-rose-200 dark:hover:border-rose-800 hover:bg-rose-50/40 dark:hover:bg-rose-950/30 rounded-2xl px-5 py-3.5 flex items-center justify-between cursor-pointer shadow-sm group"
+                    style={fadeUp(600 + i * 40)}
+                  >
+                    <div className="flex items-center gap-3.5">
+                      <button
+                        onClick={(e) => handleToggleReminder(e, r.id)}
+                        disabled={isCompleting}
+                        title="Mark as done"
+                        aria-label={`Mark "${r.title}" as done`}
+                        className={`done-btn w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0
+                          ${r.priority === 'high'   ? 'border-red-300 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/40 hover:border-red-400 dark:hover:border-red-700' :
+                            r.priority === 'medium' ? 'border-amber-300 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:border-amber-400 dark:hover:border-amber-700' :
+                            'border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:border-emerald-400 dark:hover:border-emerald-700'}
+                          ${isCompleting ? 'opacity-50 cursor-wait' : ''}`}
+                      >
+                        {isCompleting && (
+                          <Check
+                            aria-hidden="true"
+                            size={10}
+                            className="text-emerald-600 dark:text-emerald-400"
+                            style={{ animation: 'spin-check 0.3s ease-out both' }}
+                          />
+                        )}
+                      </button>
+
+                      <div>
+                        <p className="text-sm text-gray-900 dark:text-white font-medium group-hover:text-rose-700 dark:group-hover:text-rose-400 transition-colors">
+                          {r.title}
+                        </p>
+                        <p className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">
+                          {r.subjects?.name && <span className="text-gray-500 dark:text-gray-400">{r.subjects.name} · </span>}
+                          Due {new Date(r.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${daysBg} ${daysColor}`}>
+                        {daysLabel}
+                      </span>
+                      <span className={`text-xs px-2.5 py-1 rounded-full capitalize border
+                        ${r.priority === 'high'   ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800' :
+                          r.priority === 'medium' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800' :
+                          'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'}`}>
+                        {r.priority}
                       </span>
                     </div>
                   </div>

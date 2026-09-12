@@ -12,6 +12,8 @@ import {
   Calendar,
   Timer,
   Bell,
+  BellRing,
+  MessageCircle,
   Mail,
   Code2,
   Link2,
@@ -24,7 +26,7 @@ import {
 /* ── Skeleton ── */
 export function AboutSkeleton() {
   return (
-    <div className="max-w-2xl space-y-4 animate-pulse">
+    <div className="max-w-2xl mx-auto space-y-4 animate-pulse">
       <div className="space-y-1.5">
         <div className="h-6 w-20 bg-gray-200 dark:bg-gray-800 rounded-lg" />
         <div className="h-3.5 w-52 bg-gray-200 dark:bg-gray-800 rounded" />
@@ -94,6 +96,8 @@ export default function About() {
     { Icon: Timer, label: "Pomodoro Timer" },
     { Icon: Bot, label: "AI Study Assistant" },
     { Icon: Bell, label: "Push Notifications" },
+    { Icon: BellRing, label: "Reminders" },
+    { Icon: MessageCircle, label: "Feedback" },
   ]
 
   const socials = [
@@ -213,13 +217,13 @@ export default function About() {
         }
       `}</style>
 
-      <div className="max-w-2xl space-y-4 pb-8">
+      <div className="max-w-2xl mx-auto space-y-4 pb-8">
         <div className="fu1">
           <div className="flex items-center gap-2.5 mb-0.5">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">About</h2>
             <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-              v1.0.0
+              v1.7.1
             </span>
           </div>
           <p className="text-gray-500 dark:text-gray-400 text-xs font-mono">Meet the developer behind StudyFlow</p>
@@ -306,7 +310,7 @@ export default function About() {
               <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Features
             </h4>
             <span className="ml-auto text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-              8 active
+              {features.length} active
             </span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

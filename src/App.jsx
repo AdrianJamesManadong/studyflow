@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard'
 import DashboardHome from './pages/DashboardHome'
 import Subjects from './pages/Subjects'
 import Assignments from './pages/Assignments'
+import Reminders from './pages/Reminders'
 import Grades from './pages/Grades'
 import Notes from './pages/Notes'
 import Calendar from './pages/Calendar'
@@ -89,6 +90,7 @@ export default function App() {
           <Route index element={<DashboardHome />} />
           <Route path="subjects" element={<Subjects />} />
           <Route path="assignments" element={<Assignments />} />
+          <Route path="reminders" element={<Reminders />} />
           <Route path="grades" element={<Grades />} />
           <Route path="notes" element={<Notes />} />
           <Route path="calendar" element={<Calendar />} />
