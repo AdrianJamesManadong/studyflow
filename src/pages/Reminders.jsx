@@ -3,7 +3,7 @@ import { useReminders } from '../hooks/useReminders'
 import { useSubjects } from '../hooks/useSubjects'
 import { useAssignments } from '../hooks/useAssignments'
 import { AssignmentsSkeleton } from '../components/Skeleton'
-import { AlertTriangle, X, Bell, Check, Trash2 } from 'lucide-react'
+import { AlertTriangle, X, Bell, Check, Trash2, Pencil } from 'lucide-react'
 
 const PRIORITIES = ['low', 'medium', 'high']
 
@@ -28,11 +28,78 @@ function formatTime(time) {
   return `${display}:${m} ${ampm}`
 }
 
+function formatShortDate(dueDate) {
+  return new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 function isOverdue(dueDate, isDone) {
   if (isDone || !dueDate) return false
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return new Date(dueDate) < today
+}
+
+// Whole days between today and the due date (negative = overdue).
+function daysUntil(dueDate) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const due = new Date(dueDate)
+  due.setHours(0, 0, 0, 0)
+  return Math.round((due - today) / (1000 * 60 * 60 * 24))
+}
+
+// Everything the deadline block needs: how urgent it is, what to show big,
+// what to show small underneath, and the tone that drives its color.
+// Returns null when there's no due date to show (reminders don't require one).
+function getDeadlineInfo(r) {
+  if (!r.due_date) return null
+
+  const dateLabel = formatShortDate(r.due_date) + (r.due_time ? ` · ${formatTime(r.due_time)}` : '')
+
+  if (r.is_done) {
+    return { tone: 'done', big: <Check size={18} strokeWidth={3} />, sub: 'Done', dateLabel }
+  }
+
+  const diff = daysUntil(r.due_date)
+
+  if (diff < 0) {
+    const n = Math.abs(diff)
+    return { tone: 'overdue', big: n, sub: n === 1 ? 'day overdue' : 'days overdue', dateLabel }
+  }
+  if (diff === 0) {
+    return { tone: 'today', big: 'Today', sub: 'it’s due', dateLabel, wordy: true }
+  }
+  if (diff === 1) {
+    return { tone: 'soon', big: 'Tomorrow', sub: 'due date', dateLabel, wordy: true }
+  }
+  if (diff <= 3) {
+    return { tone: 'soon', big: diff, sub: 'days left', dateLabel }
+  }
+  return { tone: 'normal', big: diff, sub: 'days left', dateLabel }
+}
+
+const deadlineToneStyles = {
+  overdue: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400',
+  today:   'bg-amber-100 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400',
+  soon:    'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400',
+  normal:  'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400',
+  done:    'bg-gray-50 dark:bg-gray-900/60 border-gray-100 dark:border-gray-800 text-gray-400 dark:text-gray-600',
+}
+
+function DeadlineBlock({ reminder }) {
+  const info = getDeadlineInfo(reminder)
+  if (!info) return null
+  return (
+    <div
+      className={`flex-shrink-0 w-[5.5rem] rounded-2xl border px-2 py-2.5 text-center transition ${deadlineToneStyles[info.tone]}`}
+    >
+      <div className={`font-bold leading-tight ${info.wordy ? 'text-sm' : info.tone === 'done' ? 'flex justify-center' : 'text-2xl'}`}>
+        {info.big}
+      </div>
+      <div className="text-[11px] font-medium mt-0.5 opacity-90">{info.sub}</div>
+      <div className="text-[10px] mt-1.5 pt-1.5 border-t border-current/10 opacity-60">{info.dateLabel}</div>
+    </div>
+  )
 }
 
 const EMPTY_FORM = { title: '', subjectId: '', assignmentId: '', dueDate: '', dueTime: '', priority: 'medium', notes: '' }
@@ -208,58 +275,60 @@ export default function Reminders() {
           const subject = subjects.find(s => s.id === r.subject_id)
           const linkedAssignment = assignments.find(a => a.id === r.assignment_id)
           const overdue = isOverdue(r.due_date, r.is_done)
+          const hasDeadlineBlock = !!r.due_date
           return (
             <div
               key={r.id}
-              className={`bg-white dark:bg-gray-800 border rounded-2xl p-4 flex items-start gap-4 transition hover:border-gray-300 dark:hover:border-gray-600 shadow-sm
+              className={`bg-white dark:bg-gray-800 border rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-4 transition hover:border-gray-300 dark:hover:border-gray-600 shadow-sm
                 ${r.is_done ? 'border-gray-100 dark:border-gray-700 opacity-60' : overdue ? 'border-red-200 dark:border-red-800' : 'border-gray-100 dark:border-gray-700'}`}
             >
-              <button
-                onClick={() => toggleDone(r.id)}
-                className={`mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 transition
-                  ${r.is_done ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 dark:border-gray-600 hover:border-indigo-500'}`}
-              >
-                {r.is_done && (
-                  <span className="text-white flex items-center justify-center w-full h-full">
-                    <Check size={11} />
-                  </span>
-                )}
-              </button>
+              <div className="flex items-start gap-4 flex-1 min-w-0">
+                <button
+                  onClick={() => toggleDone(r.id)}
+                  className={`mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 transition
+                    ${r.is_done ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 dark:border-gray-600 hover:border-indigo-500'}`}
+                >
+                  {r.is_done && (
+                    <span className="text-white flex items-center justify-center w-full h-full">
+                      <Check size={11} />
+                    </span>
+                  )}
+                </button>
 
-              <div className="flex-1 min-w-0">
-                <p className={`font-medium ${r.is_done ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
-                  {r.title}
-                </p>
-                <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                  {subject && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full border ${subject.color.light} ${subject.color.border} ${subject.color.text}`}>
-                      {subject.name}
+                <div className="flex-1 min-w-0">
+                  <p className={`font-medium ${r.is_done ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
+                    {r.title}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                    {subject && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full border ${subject.color.light} ${subject.color.border} ${subject.color.text}`}>
+                        {subject.name}
+                      </span>
+                    )}
+                    {linkedAssignment && (
+                      <span className="text-xs px-2 py-0.5 rounded-full border bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400">
+                        {linkedAssignment.title}
+                      </span>
+                    )}
+                    <span className={`text-xs px-2 py-0.5 rounded-full border capitalize flex items-center gap-1.5 ${priorityStyles[r.priority]}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${priorityDot[r.priority]}`} />
+                      {r.priority}
                     </span>
-                  )}
-                  {linkedAssignment && (
-                    <span className="text-xs px-2 py-0.5 rounded-full border bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400">
-                      {linkedAssignment.title}
-                    </span>
-                  )}
-                  <span className={`text-xs px-2 py-0.5 rounded-full border capitalize flex items-center gap-1.5 ${priorityStyles[r.priority]}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${priorityDot[r.priority]}`} />
-                    {r.priority}
-                  </span>
-                  {r.due_date && (
-                    <span className={`text-xs flex items-center gap-1 ${overdue ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-400 dark:text-gray-500'}`}>
-                      {overdue && <AlertTriangle size={11} />}
-                      {overdue ? 'Overdue · ' : ''}
-                      Due {new Date(r.due_date).toLocaleDateString()}
-                      {r.due_time && ` · ${formatTime(r.due_time)}`}
-                    </span>
-                  )}
+                  </div>
+                  {r.notes && <p className="text-gray-400 dark:text-gray-500 text-xs mt-1.5">{r.notes}</p>}
                 </div>
-                {r.notes && <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">{r.notes}</p>}
               </div>
 
-              <div className="flex gap-3 flex-shrink-0">
-                <button onClick={() => openEdit(r)}          className="text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white text-xs transition">Edit</button>
-                <button onClick={() => setConfirmDelete(r)}  className="text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 text-xs transition">Delete</button>
+              <div className={`flex items-center gap-3 flex-shrink-0 ${hasDeadlineBlock ? 'pl-9 sm:pl-0' : ''}`}>
+                <DeadlineBlock reminder={r} />
+                <div className="flex sm:flex-col gap-3 sm:gap-2">
+                  <button onClick={() => openEdit(r)} title="Edit" className="text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition">
+                    <Pencil size={15} />
+                  </button>
+                  <button onClick={() => setConfirmDelete(r)} title="Delete" className="text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               </div>
             </div>
           )

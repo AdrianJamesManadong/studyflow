@@ -3,6 +3,7 @@ import { useAssignments } from '../hooks/useAssignments'
 import { useSubjects } from '../hooks/useSubjects'
 import { useGrades } from '../hooks/useGrades'
 import { useEvents } from '../hooks/useEvents'
+import { useReminders } from '../hooks/useReminders'
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,6 +15,10 @@ import {
   CheckCircle2,
   X,
   Trash2,
+  GraduationCap,
+  MapPin,
+  User,
+  Bell,
 } from 'lucide-react'
 
 // Fix: all constants outside component
@@ -43,12 +48,32 @@ function toDateStr(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+// A subject can now have multiple schedule blocks (different days/times/rooms
+// for lecture vs. lab, for example). This reads that array off the subject,
+// falling back to the old single days/startTime/endTime/room fields for any
+// subject that hasn't been touched since the multi-schedule update.
+function getSubjectSchedules(subject) {
+  if (Array.isArray(subject.schedules) && subject.schedules.length > 0) {
+    return subject.schedules
+  }
+  if (subject.days?.length || subject.startTime || subject.room) {
+    return [{
+      days: subject.days || [],
+      startTime: subject.startTime || '',
+      endTime: subject.endTime || '',
+      room: subject.room || '',
+    }]
+  }
+  return []
+}
+
 export default function Calendar() {
   const { assignments, loading: assignmentsLoading } = useAssignments()
   const { subjects,    loading: subjectsLoading    } = useSubjects()
   const { grades,      loading: gradesLoading      } = useGrades()
   const { events, addEvent, deleteEvent,
           loading: eventsLoading                   } = useEvents()
+  const { reminders,   loading: remindersLoading   } = useReminders()
 
   // Fix: stable today — primitive ms timestamp, never changes
   const todayMs = useMemo(() => {
@@ -67,7 +92,7 @@ export default function Calendar() {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [deleting, setDeleting]       = useState(false)
 
-  const isLoading = assignmentsLoading || subjectsLoading || gradesLoading || eventsLoading
+  const isLoading = assignmentsLoading || subjectsLoading || gradesLoading || eventsLoading || remindersLoading
 
   // Fix: Escape key closes modals
   useEffect(() => {
@@ -127,13 +152,54 @@ export default function Calendar() {
     return map
   }, [events])
 
+  // Reminders are optional-date — only index the ones that actually have one.
+  const remindersByDate = useMemo(() => {
+    const map = {}
+    reminders.forEach(r => {
+      if (!r.due_date) return
+      if (!map[r.due_date]) map[r.due_date] = []
+      map[r.due_date].push(r)
+    })
+    return map
+  }, [reminders])
+
+  // Subject class schedules are recurring by weekday, not tied to one date.
+  // Each subject can have several schedule blocks (e.g. lecture Mon/Wed in
+  // one room, lab Fri in another), so we index by weekday abbreviation and
+  // store { subject, block } pairs — one pair per (subject, matching day).
+  // That way a subject with two different rooms on two different days shows
+  // the correct room/time on each day, instead of just its first schedule.
+  const subjectsByWeekday = useMemo(() => {
+    const map = {}
+    subjects.forEach(s => {
+      getSubjectSchedules(s).forEach(block => {
+        (block.days || []).forEach(day => {
+          if (!map[day]) map[day] = []
+          map[day].push({ subject: s, block })
+        })
+      })
+    })
+    Object.values(map).forEach(list =>
+      list.sort((a, b) => (a.block.startTime || '').localeCompare(b.block.startTime || ''))
+    )
+    return map
+  }, [subjects])
+
+  function getClassesForDay(day) {
+    if (!day) return []
+    const weekday = DAYS[new Date(current.year, current.month, day).getDay()]
+    return subjectsByWeekday[weekday] || []
+  }
+
   function getItemsForDay(day) {
-    if (!day) return { assignments: [], grades: [], events: [] }
+    if (!day) return { assignments: [], grades: [], events: [], classes: [], reminders: [] }
     const ds = toDateStr(current.year, current.month, day)
     return {
       assignments: assignmentsByDate[ds] || [],
       grades:      gradesByDate[ds]      || [],
       events:      eventsByDate[ds]      || [],
+      reminders:   remindersByDate[ds]   || [],
+      classes:     getClassesForDay(day),
     }
   }
 
@@ -144,7 +210,7 @@ export default function Calendar() {
   const selectedItems = useMemo(
     () => selected ? getItemsForDay(selected) : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selected, assignmentsByDate, gradesByDate, eventsByDate, current]
+    [selected, assignmentsByDate, gradesByDate, eventsByDate, remindersByDate, subjectsByWeekday, current]
   )
 
   // Fix: upcoming list uses stable todayMs
@@ -156,10 +222,19 @@ export default function Calendar() {
       ...events
         .filter(e => new Date(e.date).getTime() >= todayMs)
         .map(e => ({ date: e.date, time: e.time, label: e.title, type: 'event' })),
+      ...reminders
+        .filter(r => !r.is_done && r.due_date && new Date(r.due_date).getTime() >= todayMs)
+        .map(r => ({ date: r.due_date, time: r.due_time, label: r.title, type: 'reminder' })),
     ]
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .slice(0, 6)
-  }, [assignments, events, todayMs])
+  }, [assignments, events, reminders, todayMs])
+
+  // Today's classes — recurring, so shown separately from the date-based upcoming list.
+  const todaysClasses = useMemo(
+    () => subjectsByWeekday[DAYS[todayDate.getDay()]] || [],
+    [subjectsByWeekday, todayDate]
+  )
 
   function openAddEvent(day) {
     setForm({ ...EMPTY_FORM, date: day ? toDateStr(current.year, current.month, day) : '' })
@@ -249,7 +324,7 @@ export default function Calendar() {
           <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
             {cells.map((day, i) => {
               const items      = getItemsForDay(day)
-              const totalItems = items.assignments.length + items.grades.length + items.events.length
+              const totalItems = items.classes.length + items.assignments.length + items.reminders.length + items.grades.length + items.events.length
               const isSelected = selected === day
 
               return (
@@ -269,6 +344,11 @@ export default function Calendar() {
                         {day}
                       </p>
                       <div className="space-y-0.5 hidden sm:block">
+                        {items.classes.slice(0, 1).map(({ subject, block }, idx) => (
+                          <div key={`${subject.id}-${idx}`} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 ${subject.color.bg} text-white`}>
+                            <GraduationCap size={9} className="flex-shrink-0" /> {subject.name}
+                          </div>
+                        ))}
                         {items.assignments.slice(0, 1).map(a => {
                           const subject = subjects.find(s => s.id === a.subject_id)
                           return (
@@ -280,6 +360,12 @@ export default function Calendar() {
                             </div>
                           )
                         })}
+                        {items.reminders.slice(0, 1).map(r => (
+                          <div key={r.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1
+                            ${r.is_done ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500' : 'bg-pink-600 text-white'}`}>
+                            <Bell size={9} className="flex-shrink-0" /> {r.title}
+                          </div>
+                        ))}
                         {items.events.slice(0, 1).map(e => {
                           const color = EVENT_COLORS[e.color] || EVENT_COLORS.indigo
                           return (
@@ -293,13 +379,15 @@ export default function Calendar() {
                             <BarChart3 size={9} className="flex-shrink-0" /> {items.grades.length} grade{items.grades.length > 1 ? 's' : ''}
                           </div>
                         )}
-                        {totalItems > 2 && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 px-1">+{totalItems - 2} more</p>
+                        {totalItems > 4 && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 px-1">+{totalItems - 4} more</p>
                         )}
                       </div>
                       {/* Mobile dots */}
                       <div className="flex gap-0.5 flex-wrap sm:hidden mt-0.5">
+                        {items.classes.length > 0     && <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />}
                         {items.assignments.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />}
+                        {items.reminders.length > 0   && <span className="w-1.5 h-1.5 rounded-full bg-pink-500"   />}
                         {items.events.length > 0      && <span className="w-1.5 h-1.5 rounded-full bg-amber-500"  />}
                         {items.grades.length > 0      && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"/>}
                       </div>
@@ -312,7 +400,9 @@ export default function Calendar() {
 
           {/* Legend */}
           <div className="flex gap-4 mt-3 flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-violet-500" /> Classes</div>
             <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-indigo-500" /> Assignments</div>
+            <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-pink-500" /> Reminders</div>
             <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Grades</div>
             <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-amber-500" /> Events</div>
             <p className="text-xs text-gray-400 dark:text-gray-500 hidden sm:block">Double-click a day to add event</p>
@@ -334,9 +424,32 @@ export default function Calendar() {
                   </button>
                 </div>
 
-                {selectedItems.assignments.length === 0 && selectedItems.grades.length === 0 && selectedItems.events.length === 0 && (
+                {selectedItems.classes.length === 0 && selectedItems.assignments.length === 0 && selectedItems.reminders.length === 0 && selectedItems.grades.length === 0 && selectedItems.events.length === 0 && (
                   <p className="text-gray-500 dark:text-gray-400 text-sm">Nothing on this day.</p>
                 )}
+
+                {selectedItems.classes.map(({ subject, block }, idx) => (
+                  <div key={`${subject.id}-${idx}`} className={`border rounded-lg p-3 mb-2 ${subject.color.light} ${subject.color.border}`}>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
+                      <GraduationCap size={13} className="flex-shrink-0" /> {subject.name}
+                    </p>
+                    {(block.startTime || block.endTime) && (
+                      <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 flex items-center gap-1">
+                        <Clock size={11} /> {formatTime(block.startTime)}{block.endTime && ` – ${formatTime(block.endTime)}`}
+                      </p>
+                    )}
+                    {block.room && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
+                        <MapPin size={11} /> {block.room}
+                      </p>
+                    )}
+                    {subject.professor && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
+                        <User size={11} /> {subject.professor}
+                      </p>
+                    )}
+                  </div>
+                ))}
 
                 {selectedItems.assignments.map(a => {
                   const subject = subjects.find(s => s.id === a.subject_id)
@@ -353,6 +466,34 @@ export default function Calendar() {
                       )}
                       <p className={`text-xs mt-1 capitalize flex items-center gap-1 ${a.priority === 'high' ? 'text-red-600 dark:text-red-400' : a.priority === 'medium' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                         {a.priority} priority {a.status === 'done' && <><CheckCircle2 size={11} /> Done</>}
+                      </p>
+                    </div>
+                  )
+                })}
+
+                {selectedItems.reminders.map(r => {
+                  const subject = subjects.find(s => s.id === r.subject_id)
+                  const linkedAssignment = assignments.find(a => a.id === r.assignment_id)
+                  return (
+                    <div key={r.id} className="bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-900 rounded-lg p-3 mb-2">
+                      <p className={`text-sm font-medium flex items-center gap-1.5 ${r.is_done ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
+                        <Bell size={13} className="flex-shrink-0" /> {r.title}
+                      </p>
+                      {r.due_time && <p className="text-xs text-pink-600 dark:text-pink-400 mt-0.5 flex items-center gap-1"><Clock size={11} /> {formatTime(r.due_time)}</p>}
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        {subject && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full border ${subject.color.light} ${subject.color.border} ${subject.color.text}`}>
+                            {subject.name}
+                          </span>
+                        )}
+                        {linkedAssignment && (
+                          <span className="text-xs px-2 py-0.5 rounded-full border bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400">
+                            {linkedAssignment.title}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-xs mt-1 capitalize flex items-center gap-1 ${r.priority === 'high' ? 'text-red-600 dark:text-red-400' : r.priority === 'medium' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                        {r.priority} priority {r.is_done && <><CheckCircle2 size={11} /> Done</>}
                       </p>
                     </div>
                   )
@@ -389,12 +530,35 @@ export default function Calendar() {
               </>
             ) : (
               <>
+                {todaysClasses.length > 0 && (
+                  <div className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
+                    <h3 className="text-gray-900 dark:text-white font-semibold mb-3 flex items-center gap-1.5">
+                      <GraduationCap size={15} /> Today's Classes
+                    </h3>
+                    {todaysClasses.map(({ subject, block }, idx) => (
+                      <div key={`${subject.id}-${idx}`} className={`border rounded-lg p-3 mb-2 last:mb-0 ${subject.color.light} ${subject.color.border}`}>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{subject.name}</p>
+                        {(block.startTime || block.endTime) && (
+                          <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 flex items-center gap-1">
+                            <Clock size={11} /> {formatTime(block.startTime)}{block.endTime && ` – ${formatTime(block.endTime)}`}
+                          </p>
+                        )}
+                        {block.room && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
+                            <MapPin size={11} /> {block.room}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <h3 className="text-gray-900 dark:text-white font-semibold mb-3">Upcoming</h3>
                 {upcomingItems.length === 0 && (
                   <p className="text-gray-500 dark:text-gray-400 text-sm">Nothing upcoming.</p>
                 )}
                 {upcomingItems.map((item, i) => {
-                  const ItemIcon = item.type === 'assignment' ? FileText : Star
+                  const ItemIcon = item.type === 'assignment' ? FileText : item.type === 'reminder' ? Bell : Star
                   return (
                     <div key={i} className="mb-2 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3">
                       <p className="text-sm text-gray-900 dark:text-white font-medium flex items-center gap-1.5">

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAssignments } from '../hooks/useAssignments'
 import { useSubjects } from '../hooks/useSubjects'
 import { AssignmentsSkeleton } from '../components/Skeleton'
-import { AlertTriangle, X, ClipboardList, Check, Trash2 } from 'lucide-react'
+import { AlertTriangle, X, ClipboardList, Check, Trash2, Pencil } from 'lucide-react'
 
 const PRIORITIES = ['low', 'medium', 'high']
 
@@ -27,12 +27,75 @@ function formatTime(time) {
   return `${display}:${m} ${ampm}`
 }
 
+function formatShortDate(dueDate) {
+  return new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 // Fix: compare against start of day, not current time
 function isOverdue(dueDate, status) {
   if (status === 'done') return false
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return new Date(dueDate) < today
+}
+
+// Whole days between today and the due date (negative = overdue).
+function daysUntil(dueDate) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const due = new Date(dueDate)
+  due.setHours(0, 0, 0, 0)
+  return Math.round((due - today) / (1000 * 60 * 60 * 24))
+}
+
+// Everything the deadline block needs: how urgent it is, what to show big,
+// what to show small underneath, and the tone that drives its color.
+function getDeadlineInfo(a) {
+  const dateLabel = formatShortDate(a.due_date) + (a.due_time ? ` · ${formatTime(a.due_time)}` : '')
+
+  if (a.status === 'done') {
+    return { tone: 'done', big: <Check size={18} strokeWidth={3} />, sub: 'Done', dateLabel }
+  }
+
+  const diff = daysUntil(a.due_date)
+
+  if (diff < 0) {
+    const n = Math.abs(diff)
+    return { tone: 'overdue', big: n, sub: n === 1 ? 'day overdue' : 'days overdue', dateLabel }
+  }
+  if (diff === 0) {
+    return { tone: 'today', big: 'Today', sub: 'it’s due', dateLabel, wordy: true }
+  }
+  if (diff === 1) {
+    return { tone: 'soon', big: 'Tomorrow', sub: 'due date', dateLabel, wordy: true }
+  }
+  if (diff <= 3) {
+    return { tone: 'soon', big: diff, sub: 'days left', dateLabel }
+  }
+  return { tone: 'normal', big: diff, sub: 'days left', dateLabel }
+}
+
+const deadlineToneStyles = {
+  overdue: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400',
+  today:   'bg-amber-100 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400',
+  soon:    'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400',
+  normal:  'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400',
+  done:    'bg-gray-50 dark:bg-gray-900/60 border-gray-100 dark:border-gray-800 text-gray-400 dark:text-gray-600',
+}
+
+function DeadlineBlock({ assignment }) {
+  const info = getDeadlineInfo(assignment)
+  return (
+    <div
+      className={`flex-shrink-0 w-[5.5rem] rounded-2xl border px-2 py-2.5 text-center transition ${deadlineToneStyles[info.tone]}`}
+    >
+      <div className={`font-bold leading-tight ${info.wordy ? 'text-sm' : info.tone === 'done' ? 'flex justify-center' : 'text-2xl'}`}>
+        {info.big}
+      </div>
+      <div className="text-[11px] font-medium mt-0.5 opacity-90">{info.sub}</div>
+      <div className="text-[10px] mt-1.5 pt-1.5 border-t border-current/10 opacity-60">{info.dateLabel}</div>
+    </div>
+  )
 }
 
 const EMPTY_FORM = { title: '', subjectId: '', dueDate: '', dueTime: '', priority: 'medium', notes: '' }
@@ -205,48 +268,51 @@ export default function Assignments() {
           return (
             <div
               key={a.id}
-              className={`bg-white dark:bg-gray-800 border rounded-2xl p-4 flex items-start gap-4 transition hover:border-gray-300 dark:hover:border-gray-600 shadow-sm
+              className={`bg-white dark:bg-gray-800 border rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-4 transition hover:border-gray-300 dark:hover:border-gray-600 shadow-sm
                 ${a.status === 'done' ? 'border-gray-100 dark:border-gray-700 opacity-60' : overdue ? 'border-red-200 dark:border-red-800' : 'border-gray-100 dark:border-gray-700'}`}
             >
-              <button
-                onClick={() => toggleStatus(a.id)}
-                className={`mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 transition
-                  ${a.status === 'done' ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 dark:border-gray-600 hover:border-indigo-500'}`}
-              >
-                {a.status === 'done' && (
-                  <span className="text-white flex items-center justify-center w-full h-full">
-                    <Check size={11} />
-                  </span>
-                )}
-              </button>
-
-              <div className="flex-1 min-w-0">
-                <p className={`font-medium ${a.status === 'done' ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
-                  {a.title}
-                </p>
-                <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                  {subject && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full border ${subject.color.light} ${subject.color.border} ${subject.color.text}`}>
-                      {subject.name}
+              <div className="flex items-start gap-4 flex-1 min-w-0">
+                <button
+                  onClick={() => toggleStatus(a.id)}
+                  className={`mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 transition
+                    ${a.status === 'done' ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 dark:border-gray-600 hover:border-indigo-500'}`}
+                >
+                  {a.status === 'done' && (
+                    <span className="text-white flex items-center justify-center w-full h-full">
+                      <Check size={11} />
                     </span>
                   )}
-                  <span className={`text-xs px-2 py-0.5 rounded-full border capitalize flex items-center gap-1.5 ${priorityStyles[a.priority]}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${priorityDot[a.priority]}`} />
-                    {a.priority}
-                  </span>
-                  <span className={`text-xs flex items-center gap-1 ${overdue ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-400 dark:text-gray-500'}`}>
-                    {overdue && <AlertTriangle size={11} />}
-                    {overdue ? 'Overdue · ' : ''}
-                    Due {new Date(a.due_date).toLocaleDateString()}
-                    {a.due_time && ` · ${formatTime(a.due_time)}`}
-                  </span>
+                </button>
+
+                <div className="flex-1 min-w-0">
+                  <p className={`font-medium ${a.status === 'done' ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
+                    {a.title}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                    {subject && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full border ${subject.color.light} ${subject.color.border} ${subject.color.text}`}>
+                        {subject.name}
+                      </span>
+                    )}
+                    <span className={`text-xs px-2 py-0.5 rounded-full border capitalize flex items-center gap-1.5 ${priorityStyles[a.priority]}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${priorityDot[a.priority]}`} />
+                      {a.priority}
+                    </span>
+                  </div>
+                  {a.notes && <p className="text-gray-400 dark:text-gray-500 text-xs mt-1.5">{a.notes}</p>}
                 </div>
-                {a.notes && <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">{a.notes}</p>}
               </div>
 
-              <div className="flex gap-3 flex-shrink-0">
-                <button onClick={() => openEdit(a)}         className="text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white text-xs transition">Edit</button>
-                <button onClick={() => setConfirmDelete(a)} className="text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 text-xs transition">Delete</button>
+              <div className="flex items-center gap-3 flex-shrink-0 pl-9 sm:pl-0">
+                <DeadlineBlock assignment={a} />
+                <div className="flex sm:flex-col gap-3 sm:gap-2">
+                  <button onClick={() => openEdit(a)} title="Edit" className="text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition">
+                    <Pencil size={15} />
+                  </button>
+                  <button onClick={() => setConfirmDelete(a)} title="Delete" className="text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               </div>
             </div>
           )

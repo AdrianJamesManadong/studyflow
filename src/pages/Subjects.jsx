@@ -2,28 +2,65 @@ import { useState, useRef, useEffect } from 'react'
 import { useSubjects } from '../hooks/useSubjects'
 import { useAssignments } from '../hooks/useAssignments'
 import { SubjectsSkeleton } from '../components/Skeleton'
-import { BookOpen, Trash2, Check, AlertTriangle, User, MapPin, Clock, GraduationCap } from 'lucide-react'
+import { BookOpen, Trash2, Check, AlertTriangle, User, MapPin, Clock, GraduationCap, Plus, X } from 'lucide-react'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+// One schedule "block" = a set of days that share the same time + room
+// e.g. a subject can have one block for Mon/Wed lecture in Rm 302
+// and another block for Fri lab in the Chem Lab.
+function emptyScheduleBlock() {
+  return {
+    _key: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+    days: [],
+    startTime: '',
+    endTime: '',
+    room: '',
+  }
+}
 
 const EMPTY_FORM = {
   name: '',
   color: 'indigo',
   professor: '',
   units: '',
-  room: '',
-  days: [],
-  startTime: '',
-  endTime: '',
+  schedules: [emptyScheduleBlock()],
 }
 
-function formatSchedule(subject) {
-  const days = subject.days?.length ? subject.days.join('/') : ''
-  const time = subject.startTime && subject.endTime
-    ? `${subject.startTime}–${subject.endTime}`
+// Normalizes a subject from storage into the schedules[] shape,
+// so old subjects saved with a single days/startTime/endTime/room
+// still work fine after this update.
+function normalizeSchedules(subject) {
+  if (Array.isArray(subject.schedules) && subject.schedules.length > 0) {
+    return subject.schedules.map(block => ({
+      _key: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+      days: block.days || [],
+      startTime: block.startTime || '',
+      endTime: block.endTime || '',
+      room: block.room || '',
+    }))
+  }
+  // Legacy shape fallback
+  if (subject.days?.length || subject.startTime || subject.room) {
+    return [{
+      _key: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+      days: subject.days || [],
+      startTime: subject.startTime || '',
+      endTime: subject.endTime || '',
+      room: subject.room || '',
+    }]
+  }
+  return [emptyScheduleBlock()]
+}
+
+function formatScheduleBlock(block) {
+  const days = block.days?.length ? block.days.join('/') : ''
+  const time = block.startTime && block.endTime
+    ? `${block.startTime}–${block.endTime}`
     : ''
-  if (!days && !time) return ''
-  return [days, time].filter(Boolean).join(' · ')
+  const dayTime = [days, time].filter(Boolean).join(' · ')
+  if (!dayTime && !block.room) return ''
+  return [dayTime, block.room].filter(Boolean).join(block.room && dayTime ? ' @ ' : '')
 }
 
 export default function Subjects() {
@@ -71,19 +108,43 @@ export default function Subjects() {
       color: subject.color.name,
       professor: subject.professor || '',
       units: subject.units ?? '',
-      room: subject.room || '',
-      days: subject.days || [],
-      startTime: subject.startTime || '',
-      endTime: subject.endTime || '',
+      schedules: normalizeSchedules(subject),
     })
     setError('')
     setShowModal(true)
   }
 
-  function toggleDay(day) {
+  function toggleDay(blockIndex, day) {
     setForm(f => ({
       ...f,
-      days: f.days.includes(day) ? f.days.filter(d => d !== day) : [...f.days, day],
+      schedules: f.schedules.map((block, i) =>
+        i !== blockIndex
+          ? block
+          : {
+              ...block,
+              days: block.days.includes(day)
+                ? block.days.filter(d => d !== day)
+                : [...block.days, day],
+            }
+      ),
+    }))
+  }
+
+  function updateBlock(blockIndex, patch) {
+    setForm(f => ({
+      ...f,
+      schedules: f.schedules.map((block, i) => (i !== blockIndex ? block : { ...block, ...patch })),
+    }))
+  }
+
+  function addBlock() {
+    setForm(f => ({ ...f, schedules: [...f.schedules, emptyScheduleBlock()] }))
+  }
+
+  function removeBlock(blockIndex) {
+    setForm(f => ({
+      ...f,
+      schedules: f.schedules.length <= 1 ? f.schedules : f.schedules.filter((_, i) => i !== blockIndex),
     }))
   }
 
@@ -100,21 +161,25 @@ export default function Subjects() {
       return
     }
 
-    // Basic time sanity check
-    if (form.startTime && form.endTime && form.startTime >= form.endTime) {
-      setError('End time must be after start time.')
-      return
+    // Basic time sanity check per schedule block
+    for (const block of form.schedules) {
+      if (block.startTime && block.endTime && block.startTime >= block.endTime) {
+        setError('End time must be after start time for one of your schedules.')
+        return
+      }
     }
+
+    // Drop fully-empty schedule blocks (no days, no time, no room)
+    const cleanedSchedules = form.schedules
+      .filter(b => b.days.length || b.startTime || b.endTime || b.room.trim())
+      .map(({ _key, ...rest }) => ({ ...rest, room: rest.room.trim() }))
 
     const payload = {
       name: trimmed,
       color: form.color,
       professor: form.professor.trim(),
       units: form.units === '' ? null : Number(form.units),
-      room: form.room.trim(),
-      days: form.days,
-      startTime: form.startTime,
-      endTime: form.endTime,
+      schedules: cleanedSchedules,
     }
 
     setSaving(true)
@@ -225,7 +290,9 @@ export default function Subjects() {
           const pending = pendingCount(subject.id)
           const done = total - pending
           const progress = total > 0 ? Math.round((done / total) * 100) : null
-          const schedule = formatSchedule(subject)
+          const scheduleBlocks = normalizeSchedules(subject).filter(
+            b => b.days.length || b.startTime || b.room
+          )
 
           return (
             <div
@@ -245,8 +312,8 @@ export default function Subjects() {
                 )}
               </div>
 
-              {/* Prof / Room / Schedule */}
-              {(subject.professor || subject.room || schedule) && (
+              {/* Prof / Schedule blocks (each with its own days, time, room) */}
+              {(subject.professor || scheduleBlocks.length > 0) && (
                 <div className="space-y-1.5 text-xs text-gray-500 dark:text-gray-400">
                   {subject.professor && (
                     <div className="flex items-center gap-1.5">
@@ -254,18 +321,16 @@ export default function Subjects() {
                       <span className="truncate">{subject.professor}</span>
                     </div>
                   )}
-                  {subject.room && (
-                    <div className="flex items-center gap-1.5">
-                      <MapPin size={12} className="flex-shrink-0" />
-                      <span className="truncate">{subject.room}</span>
-                    </div>
-                  )}
-                  {schedule && (
-                    <div className="flex items-center gap-1.5">
-                      <Clock size={12} className="flex-shrink-0" />
-                      <span className="truncate">{schedule}</span>
-                    </div>
-                  )}
+                  {scheduleBlocks.map((block, i) => {
+                    const label = formatScheduleBlock(block)
+                    if (!label) return null
+                    return (
+                      <div key={block._key || i} className="flex items-center gap-1.5">
+                        <Clock size={12} className="flex-shrink-0" />
+                        <span className="truncate">{label}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 
@@ -367,52 +432,85 @@ export default function Subjects() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1.5">
-                <MapPin size={13} /> Classroom / Room No.
-              </label>
-              <input
-                value={form.room}
-                onChange={e => setForm(f => ({ ...f, room: e.target.value }))}
-                placeholder="e.g. Rm 302, Bldg C"
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
-              />
-            </div>
+            {/* Schedule blocks: each is its own days + time + room combo,
+                so a subject that meets in different rooms/times on different
+                days can have more than one of these. */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                  <Clock size={13} /> Schedule
+                </label>
+                <button
+                  type="button"
+                  onClick={addBlock}
+                  className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1"
+                >
+                  <Plus size={13} /> Add another
+                </button>
+              </div>
 
-            <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1.5">
-                <Clock size={13} /> Schedule
-              </label>
-              <div className="flex gap-1.5 flex-wrap mb-3">
-                {DAYS.map(day => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => toggleDay(day)}
-                    className={`text-xs font-medium px-2.5 py-1.5 rounded-lg border transition
-                      ${form.days.includes(day)
-                        ? 'bg-indigo-600 border-indigo-600 text-white'
-                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-300 dark:hover:border-indigo-700'}`}
-                  >
-                    {day}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="time"
-                  value={form.startTime}
-                  onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))}
-                  className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
-                />
-                <span className="text-gray-400 dark:text-gray-500 text-sm">to</span>
-                <input
-                  type="time"
-                  value={form.endTime}
-                  onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))}
-                  className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
-                />
-              </div>
+              {form.schedules.map((block, blockIndex) => (
+                <div
+                  key={block._key}
+                  className="bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 rounded-lg p-3 space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex gap-1.5 flex-wrap">
+                      {DAYS.map(day => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => toggleDay(blockIndex, day)}
+                          className={`text-xs font-medium px-2.5 py-1.5 rounded-lg border transition
+                            ${block.days.includes(day)
+                              ? 'bg-indigo-600 border-indigo-600 text-white'
+                              : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-300 dark:hover:border-indigo-700'}`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                    {form.schedules.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeBlock(blockIndex)}
+                        className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 flex-shrink-0 p-1"
+                        title="Remove this schedule"
+                      >
+                        <X size={15} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="time"
+                      value={block.startTime}
+                      onChange={e => updateBlock(blockIndex, { startTime: e.target.value })}
+                      className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
+                    />
+                    <span className="text-gray-400 dark:text-gray-500 text-sm">to</span>
+                    <input
+                      type="time"
+                      value={block.endTime}
+                      onChange={e => updateBlock(blockIndex, { endTime: e.target.value })}
+                      className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1.5">
+                      <MapPin size={12} /> Classroom / Room No.
+                    </label>
+                    <input
+                      value={block.room}
+                      onChange={e => updateBlock(blockIndex, { room: e.target.value })}
+                      placeholder="e.g. Rm 302, Bldg C"
+                      className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
 
             {error && (
