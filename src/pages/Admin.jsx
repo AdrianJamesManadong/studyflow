@@ -17,6 +17,7 @@ import {
   ClipboardList,
   BarChart3,
   NotebookPen,
+  Bell,
   Search,
   UserSearch,
   Pencil,
@@ -27,6 +28,9 @@ import {
   Send,
   X,
   MapPin,
+  Activity,
+  UserCheck,
+  TrendingUp,
 } from 'lucide-react'
 
 const ADMIN_EMAIL = 'adrianjames082506@gmail.com'
@@ -50,6 +54,7 @@ const ANN_TYPES = {
 
 const TABS = [
   { key: 'users',         label: 'Users',         Icon: Users },
+  { key: 'visitors',      label: 'Visitors',      Icon: Activity },
   { key: 'announcements', label: 'Announcements', Icon: Megaphone },
   { key: 'feedback',      label: 'Feedback',      Icon: MessageCircle },
 ]
@@ -102,12 +107,47 @@ function UserAvatar({ user, size = 'sm' }) {
   )
 }
 
+// ── Visitor/activity stats derived from the existing user records (no new tables needed) ──
+function computeVisitorStats(users) {
+  const now = Date.now()
+  const DAY = 24 * 60 * 60 * 1000
+  const isWithin = (dateStr, ms) => !!dateStr && (now - new Date(dateStr).getTime()) < ms
+
+  return {
+    activeToday: users.filter(u => isWithin(u.last_seen_at || u.last_sign_in_at, DAY)).length,
+    activeWeek:  users.filter(u => isWithin(u.last_seen_at || u.last_sign_in_at, 7 * DAY)).length,
+    activeMonth: users.filter(u => isWithin(u.last_seen_at || u.last_sign_in_at, 30 * DAY)).length,
+    newToday:    users.filter(u => isWithin(u.created_at, DAY)).length,
+    newWeek:     users.filter(u => isWithin(u.created_at, 7 * DAY)).length,
+    newMonth:    users.filter(u => isWithin(u.created_at, 30 * DAY)).length,
+  }
+}
+
+function getSignupTrend(users, days = 14) {
+  const DAY = 24 * 60 * 60 * 1000
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const buckets = Array.from({ length: days }, (_, i) => {
+    const d = new Date(today.getTime() - (days - 1 - i) * DAY)
+    return { date: d, label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), count: 0 }
+  })
+  users.forEach(u => {
+    if (!u.created_at) return
+    const d = new Date(u.created_at)
+    d.setHours(0, 0, 0, 0)
+    const idx = buckets.findIndex(b => b.date.getTime() === d.getTime())
+    if (idx !== -1) buckets[idx].count++
+  })
+  return buckets
+}
+
 export default function Admin() {
   const { user } = useAuth()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({ users: 0, assignments: 0, grades: 0, notes: 0, subjects: 0 })
+  const [stats, setStats] = useState({ users: 0, assignments: 0, grades: 0, notes: 0, subjects: 0, reminders: 0 })
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('') // UX: debounce admin search too
   const [activeTab, setActiveTab] = useState('users')
   const [selectedUser, setSelectedUser] = useState(null)
   const [userDetails, setUserDetails] = useState(null)
@@ -148,6 +188,12 @@ export default function Admin() {
     fetchAnnouncements()
   }, [])
 
+  // UX: debounce the admin user search by 300ms, same pattern as Notes
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
   async function fetchData() {
     setLoading(true)
     const { data, error } = await supabase
@@ -163,6 +209,9 @@ export default function Admin() {
         grades: data.reduce((acc, u) => acc + parseInt(u.grade_count || 0), 0),
         notes: data.reduce((acc, u) => acc + parseInt(u.note_count || 0), 0),
         subjects: data.reduce((acc, u) => acc + parseInt(u.subject_count || 0), 0),
+        // NOTE: assumes admin_user_stats has a reminder_count column, same
+        // shape as note_count. Add it to that view/table if it isn't there yet.
+        reminders: data.reduce((acc, u) => acc + parseInt(u.reminder_count || 0), 0),
       })
     }
     setLoading(false)
@@ -180,11 +229,12 @@ export default function Admin() {
     setUserDetails(null)
     setUserDetailsLoading(true)
 
-    const [subjectsRes, assignmentsRes, gradesRes, notesRes] = await Promise.all([
+    const [subjectsRes, assignmentsRes, gradesRes, notesRes, remindersRes] = await Promise.all([
       supabase.from('subjects').select('*').eq('user_id', userId),
       supabase.from('assignments').select('*').eq('user_id', userId).order('due_date'),
       supabase.from('grades').select('*').eq('user_id', userId),
       supabase.from('notes').select('*').eq('user_id', userId),
+      supabase.from('reminders').select('*').eq('user_id', userId).order('due_date'),
     ])
 
     setUserDetails({
@@ -192,11 +242,13 @@ export default function Admin() {
       assignments: assignmentsRes.data ?? [],
       grades: gradesRes.data ?? [],
       notes: notesRes.data ?? [],
+      reminders: remindersRes.data ?? [],
       errors: {
         subjects: subjectsRes.error?.message,
         assignments: assignmentsRes.error?.message,
         grades: gradesRes.error?.message,
         notes: notesRes.error?.message,
+        reminders: remindersRes.error?.message,
       }
     })
     setUserDetailsLoading(false)
@@ -206,6 +258,7 @@ export default function Admin() {
     await supabase.from('assignments').delete().eq('user_id', u.id)
     await supabase.from('grades').delete().eq('user_id', u.id)
     await supabase.from('notes').delete().eq('user_id', u.id)
+    await supabase.from('reminders').delete().eq('user_id', u.id)
     await supabase.from('subjects').delete().eq('user_id', u.id)
     setUsers(prev => prev.filter(x => x.id !== u.id))
     setConfirmDelete(null)
@@ -331,13 +384,35 @@ export default function Admin() {
   }
 
   const filtered = users.filter(u =>
-    u.email?.toLowerCase().includes(search.toLowerCase()) ||
-    u.name?.toLowerCase().includes(search.toLowerCase())
+    u.email?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+    u.name?.toLowerCase().includes(debouncedSearch.toLowerCase())
   )
 
   const filteredFeedback = feedbackFilter === 'all'
     ? feedbackPosts
     : feedbackPosts.filter(p => p.category === feedbackFilter)
+
+  // ── Derived stats for the Visitors, Announcements, and Feedback tabs ──
+  const visitorStats = computeVisitorStats(users)
+  const signupTrend = getSignupTrend(users)
+  const maxTrendCount = Math.max(1, ...signupTrend.map(b => b.count))
+
+  const announcementStatsTotals = {
+    total: announcements.length,
+    info: announcements.filter(a => a.type === 'info').length,
+    warning: announcements.filter(a => a.type === 'warning').length,
+    success: announcements.filter(a => a.type === 'success').length,
+    danger: announcements.filter(a => a.type === 'danger').length,
+  }
+
+  const feedbackStatsTotals = {
+    total: feedbackPosts.length,
+    general: feedbackPosts.filter(p => p.category === 'general').length,
+    bug: feedbackPosts.filter(p => p.category === 'bug').length,
+    feature: feedbackPosts.filter(p => p.category === 'feature').length,
+    comments: feedbackPosts.reduce((acc, p) => acc + (p.comment_count || 0), 0),
+    likes: feedbackPosts.reduce((acc, p) => acc + (p.like_count || 0), 0),
+  }
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -360,14 +435,15 @@ export default function Admin() {
         </button>
       </div>
 
-      {/* Stats — 2-col on mobile, 5-col on lg, each with its own accent */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+      {/* Stats — 2-col on mobile, 6-col on lg, each with its own accent */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-6">
         {[
           { label: 'Total Users', value: stats.users,       Icon: Users,         accent: 'text-indigo-600 dark:text-indigo-400',  glow: 'border-indigo-100 dark:border-indigo-900' },
           { label: 'Subjects',    value: stats.subjects,    Icon: BookOpen,      accent: 'text-sky-600 dark:text-sky-400',     glow: 'border-sky-100 dark:border-sky-900' },
           { label: 'Assignments', value: stats.assignments, Icon: ClipboardList, accent: 'text-amber-600 dark:text-amber-400',   glow: 'border-amber-100 dark:border-amber-900' },
           { label: 'Grades',      value: stats.grades,      Icon: BarChart3,     accent: 'text-emerald-600 dark:text-emerald-400', glow: 'border-emerald-100 dark:border-emerald-900' },
           { label: 'Notes',       value: stats.notes,       Icon: NotebookPen,   accent: 'text-violet-600 dark:text-violet-400',  glow: 'border-violet-100 dark:border-violet-900' },
+          { label: 'Reminders',   value: stats.reminders,   Icon: Bell,          accent: 'text-blue-600 dark:text-blue-400',    glow: 'border-blue-100 dark:border-blue-900' },
         ].map((stat, i) => (
           <div
             key={stat.label}
@@ -428,6 +504,7 @@ export default function Admin() {
                           <th className="text-center px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-medium">Assignments</th>
                           <th className="text-center px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-medium">Grades</th>
                           <th className="text-center px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-medium">Notes</th>
+                          <th className="text-center px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-medium">Reminders</th>
                           <th className="text-center px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-medium">Actions</th>
                         </tr>
                       </thead>
@@ -464,6 +541,7 @@ export default function Admin() {
                             <td className="px-4 py-3 text-center"><span className="text-amber-600 dark:text-amber-400 font-medium text-sm">{u.assignment_count}</span></td>
                             <td className="px-4 py-3 text-center"><span className="text-emerald-600 dark:text-emerald-400 font-medium text-sm">{u.grade_count}</span></td>
                             <td className="px-4 py-3 text-center"><span className="text-violet-600 dark:text-violet-400 font-medium text-sm">{u.note_count}</span></td>
+                            <td className="px-4 py-3 text-center"><span className="text-blue-600 dark:text-blue-400 font-medium text-sm">{u.reminder_count ?? 0}</span></td>
                             <td className="px-4 py-3 text-center">
                               {u.email !== ADMIN_EMAIL && (
                                 <IconButton
@@ -533,6 +611,7 @@ export default function Admin() {
                               <span className="text-amber-600 dark:text-amber-400 text-xs font-medium bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded-md">{u.assignment_count}A</span>
                               <span className="text-emerald-600 dark:text-emerald-400 text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded-md">{u.grade_count}G</span>
                               <span className="text-violet-600 dark:text-violet-400 text-xs font-medium bg-violet-50 dark:bg-violet-950/40 px-1.5 py-0.5 rounded-md">{u.note_count}N</span>
+                              <span className="text-blue-600 dark:text-blue-400 text-xs font-medium bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded-md">{u.reminder_count ?? 0}R</span>
                             </div>
                             {u.email !== ADMIN_EMAIL && (
                               <IconButton
@@ -598,9 +677,67 @@ export default function Admin() {
         </div>
       )}
 
+      {/* ─── Visitors Tab ─── */}
+      {activeTab === 'visitors' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
+            {[
+              { label: 'Active Today',     value: visitorStats.activeToday, Icon: UserCheck,  accent: 'text-emerald-600 dark:text-emerald-400', glow: 'border-emerald-100 dark:border-emerald-900' },
+              { label: 'Active This Week', value: visitorStats.activeWeek,  Icon: UserCheck,  accent: 'text-sky-600 dark:text-sky-400',      glow: 'border-sky-100 dark:border-sky-900' },
+              { label: 'Active This Month',value: visitorStats.activeMonth, Icon: UserCheck,  accent: 'text-indigo-600 dark:text-indigo-400', glow: 'border-indigo-100 dark:border-indigo-900' },
+              { label: 'New Today',        value: visitorStats.newToday,    Icon: TrendingUp, accent: 'text-amber-600 dark:text-amber-400',   glow: 'border-amber-100 dark:border-amber-900' },
+              { label: 'New This Week',    value: visitorStats.newWeek,     Icon: TrendingUp, accent: 'text-violet-600 dark:text-violet-400', glow: 'border-violet-100 dark:border-violet-900' },
+              { label: 'New This Month',   value: visitorStats.newMonth,    Icon: TrendingUp, accent: 'text-rose-600 dark:text-rose-400',     glow: 'border-rose-100 dark:border-rose-900' },
+            ].map(stat => (
+              <div key={stat.label} className={`bg-white dark:bg-gray-800 border rounded-xl p-3 sm:p-4 shadow-sm ${stat.glow}`}>
+                <stat.Icon aria-hidden="true" size={22} className={`mb-1.5 sm:mb-2 block ${stat.accent}`} />
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
+                <p className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-4 sm:p-6 shadow-sm">
+            <h3 className="text-gray-900 dark:text-white font-semibold mb-4">Signups — Last 14 Days</h3>
+            <div className="flex items-end gap-1.5 sm:gap-2 h-32">
+              {signupTrend.map(b => (
+                <div key={b.label} className="flex-1 flex flex-col items-center justify-end gap-1 group relative h-full">
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 transition absolute -top-4">{b.count}</span>
+                  <div
+                    className="w-full rounded-t-md bg-indigo-500 dark:bg-indigo-500/80 min-h-[3px] transition-all mt-auto"
+                    style={{ height: `${(b.count / maxTrendCount) * 100}%` }}
+                  />
+                  <span className="text-[9px] text-gray-400 dark:text-gray-500 whitespace-nowrap">{b.label.split(' ')[1]}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-gray-400 dark:text-gray-500 text-xs mt-3">Based on account creation dates. Hover a bar for the exact count.</p>
+          </div>
+
+          <p className="text-gray-400 dark:text-gray-500 text-xs">
+            "Active" figures come from each user's last sign-in / last-seen timestamp — this app doesn't track anonymous page views yet. Let me know if you want a proper visits table for that.
+          </p>
+        </div>
+      )}
+
       {/* ─── Announcements Tab ─── */}
       {activeTab === 'announcements' && (
         <div className="space-y-4">
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3">
+            {[
+              { label: 'Total',   value: announcementStatsTotals.total,   style: 'text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700' },
+              { label: 'Info',    value: announcementStatsTotals.info,    style: ANN_TYPES.info.chip },
+              { label: 'Warning', value: announcementStatsTotals.warning, style: ANN_TYPES.warning.chip },
+              { label: 'Success', value: announcementStatsTotals.success, style: ANN_TYPES.success.chip },
+              { label: 'Danger',  value: announcementStatsTotals.danger,  style: ANN_TYPES.danger.chip },
+            ].map(s => (
+              <div key={s.label} className={`border rounded-xl px-3 py-2.5 text-center ${s.style}`}>
+                <p className="text-lg font-bold">{s.value}</p>
+                <p className="text-[10px] opacity-80">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
           <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-4 sm:p-6 space-y-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5">
@@ -723,6 +860,21 @@ export default function Admin() {
       {/* ─── Feedback Tab ─── */}
       {activeTab === 'feedback' && (
         <div className="space-y-4">
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3">
+            {[
+              { label: 'Total Posts', value: feedbackStatsTotals.total,    style: 'text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700' },
+              { label: 'General',     value: feedbackStatsTotals.general,  style: feedbackCategoryMeta('general').style },
+              { label: 'Bug',         value: feedbackStatsTotals.bug,      style: feedbackCategoryMeta('bug').style },
+              { label: 'Feature',     value: feedbackStatsTotals.feature,  style: feedbackCategoryMeta('feature').style },
+              { label: 'Comments',    value: feedbackStatsTotals.comments, style: 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' },
+            ].map(s => (
+              <div key={s.label} className={`border rounded-xl px-3 py-2.5 text-center ${s.style}`}>
+                <p className="text-lg font-bold">{s.value}</p>
+                <p className="text-[10px] opacity-80">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => setFeedbackFilter('all')}
@@ -1047,6 +1199,31 @@ function UserDetailPanel({ selectedUser, userDetails, userDetailsLoading, onClos
                 {userDetails.notes.map(n => (
                   <div key={n.id} className="bg-gray-50 dark:bg-gray-900 rounded-lg px-3 py-1.5">
                     <p className="text-gray-900 dark:text-white text-xs">{n.title}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <p className="text-gray-400 dark:text-gray-500 text-xs font-medium mb-1.5 flex items-center gap-1.5">
+              <Bell aria-hidden="true" size={13} className="text-blue-600 dark:text-blue-400" />
+              Reminders ({userDetails.reminders?.length ?? 0})
+              {userDetails.errors?.reminders && <span className="text-red-600 dark:text-red-400 ml-1">— fetch error</span>}
+            </p>
+            {(userDetails.reminders?.length ?? 0) === 0 ? (
+              <p className="text-gray-400 dark:text-gray-500 text-xs">No reminders</p>
+            ) : (
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {userDetails.reminders.map(r => (
+                  <div key={r.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 rounded-lg px-3 py-1.5">
+                    <div className="min-w-0">
+                      <p className={`text-xs ${r.is_done ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>{r.title}</p>
+                      {r.due_date && <p className="text-gray-400 dark:text-gray-500 text-xs">Due {r.due_date}</p>}
+                    </div>
+                    {!r.is_done && (
+                      <span className="text-[9px] bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full flex-shrink-0">Upcoming</span>
+                    )}
                   </div>
                 ))}
               </div>

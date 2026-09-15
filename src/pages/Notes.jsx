@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useReducer } from 'react'
 import { useNotes } from '../hooks/useNotes'
 import { useSubjects } from '../hooks/useSubjects'
 import { NotesSkeleton } from '../components/Skeleton'
@@ -10,17 +10,51 @@ import {
   StickyNote,
   AlertTriangle,
   X,
+  Check,
+  ArrowUpDown,
 } from 'lucide-react'
 
-// Fix: outside component — never recreated on render
+// Fix: outside component — never recreated on render.
+// Scales from seconds up through years, then falls back to an actual date
+// once "Xd ago" stops being useful (matches how most note apps handle this).
 function timeAgo(dateStr) {
-  const diff = Date.now() - new Date(dateStr).getTime()
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const diff = Date.now() - date.getTime()
   const mins = Math.floor(diff / 60000)
   if (mins < 1)  return 'just now'
   if (mins < 60) return `${mins}m ago`
   const hrs = Math.floor(mins / 60)
   if (hrs < 24)  return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 7)  return `${days}d ago`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 4) return `${weeks}w ago`
+  // Beyond ~a month, showing a real date is more useful than "2mo ago".
+  const sameYear = date.getFullYear() === new Date().getFullYear()
+  return date.toLocaleDateString(undefined, sameYear
+    ? { month: 'short', day: 'numeric' }
+    : { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+// Precise timestamp for tooltips.
+function absoluteTime(dateStr) {
+  if (!dateStr) return ''
+  return new Date(dateStr).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+}
+
+// A note only counts as "edited" if it was actually touched meaningfully after
+// creation — a few hundred ms of DB round-trip shouldn't count as an edit.
+function noteTimestamp(note) {
+  if (!note.created_at) return { label: 'Updated', date: note.updated_at }
+  const created = new Date(note.created_at).getTime()
+  const updated = new Date(note.updated_at || note.created_at).getTime()
+  return updated - created > 60000
+    ? { label: 'Edited',  date: note.updated_at }
+    : { label: 'Created', date: note.created_at }
 }
 
 function isDirty(form, editing) {
@@ -34,6 +68,20 @@ function isDirty(form, editing) {
 
 const EMPTY_FORM = { title: '', content: '', subjectId: '' }
 
+const SORT_OPTIONS = [
+  { value: 'updated_desc', label: 'Newest edited' },
+  { value: 'updated_asc',  label: 'Oldest edited'  },
+  { value: 'title_asc',    label: 'Title A–Z'      },
+]
+
+function sortNotes(notes, sortBy) {
+  const sorted = [...notes]
+  if (sortBy === 'updated_desc') sorted.sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))
+  if (sortBy === 'updated_asc')  sorted.sort((a, b) => new Date(a.updated_at || a.created_at) - new Date(b.updated_at || b.created_at))
+  if (sortBy === 'title_asc')    sorted.sort((a, b) => a.title.localeCompare(b.title))
+  return sorted
+}
+
 export default function Notes() {
   // Fix: destructure loading from both hooks
   const { notes, addNote, editNote, deleteNote, loading: notesLoading } = useNotes()
@@ -44,6 +92,7 @@ export default function Notes() {
   const [search, setSearch]               = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')  // Fix: debounced search
   const [selectedSubject, setSelectedSubject] = useState('all')
+  const [sortBy, setSortBy]               = useState('updated_desc')
   const [form, setForm]                   = useState(EMPTY_FORM)
   const [saving, setSaving]               = useState(false)
   const [error, setError]                 = useState('')
@@ -51,12 +100,42 @@ export default function Notes() {
   const [deleting, setDeleting]           = useState(false)
   const [confirmBack, setConfirmBack]     = useState(false)  // Fix: warn on unsaved changes
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
+  const [toast, setToast]                 = useState('')
 
   // Fix: debounce search input by 300ms
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
     return () => clearTimeout(t)
   }, [search])
+
+  // Keeps every "Xm ago" label on screen honest without needing new data —
+  // just forces a re-render every 30s so timeAgo() recalculates.
+  const [, tick] = useReducer(x => x + 1, 0)
+  useEffect(() => {
+    const id = setInterval(tick, 30000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Auto-dismiss the save/delete confirmation toast.
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(''), 2500)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  // Improvement: warn on browser refresh/tab close too, not just in-app
+  // navigation — same reasoning as the existing confirmBack guard, just
+  // covering the case that guard can't catch.
+  useEffect(() => {
+    function handleBeforeUnload(e) {
+      if (view === 'editor' && isDirty(form, editing)) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [view, form, editing])
 
   // Escape key: close confirm modals or go back from editor
   useEffect(() => {
@@ -94,15 +173,21 @@ export default function Notes() {
   }
 
   // Fix: async, awaited, saving state, error handling
+  // Improvement: trim title/content before saving — the trim() check only
+  // gated the button before, the untrimmed value still made it to the DB.
   async function handleSave() {
-    if (!form.title.trim()) return
+    const trimmedTitle = form.title.trim()
+    if (!trimmedTitle) return
+    const payload = { ...form, title: trimmedTitle, content: form.content.trim() }
     setSaving(true)
     setError('')
     try {
       if (editing) {
-        await editNote(editing.id, form)
+        await editNote(editing.id, payload)
+        setToast('Note updated')
       } else {
-        await addNote(form)
+        await addNote(payload)
+        setToast('Note created')
       }
       setView('list')
     } catch (err) {
@@ -119,25 +204,10 @@ export default function Notes() {
     try {
       await deleteNote(confirmDelete.id)
       setConfirmDelete(null)
+      setToast('Note deleted')
       if (view === 'editor') setView('list')
     } catch (err) {
       setError(err.message || 'Failed to delete note. Please try again.')
-    } finally {
-      setDeleting(false)
-    }
-  }
-
-  // Deletes ALL notes (not just the filtered/visible ones)
-  async function handleDeleteAll() {
-    setDeleting(true)
-    setError('')
-    try {
-      for (const note of notes) {
-        await deleteNote(note.id)
-      }
-      setConfirmDeleteAll(false)
-    } catch (err) {
-      setError(err.message || 'Failed to delete all notes. Please try again.')
     } finally {
       setDeleting(false)
     }
@@ -151,12 +221,47 @@ export default function Notes() {
     return matchesSearch && matchesSubject
   })
 
+  const sorted = useMemo(() => sortNotes(filtered, sortBy), [filtered, sortBy])
+
+  // Improvement: Delete All now only touches what's currently visible
+  // (respects search + subject filter) instead of silently wiping every
+  // note the user owns, even ones they can't currently see.
+  const hasActiveFilter = debouncedSearch.trim() !== '' || selectedSubject !== 'all'
+
+  async function handleDeleteAll() {
+    setDeleting(true)
+    setError('')
+    try {
+      for (const note of sorted) {
+        await deleteNote(note.id)
+      }
+      setConfirmDeleteAll(false)
+      setToast(hasActiveFilter ? 'Filtered notes deleted' : 'All notes deleted')
+    } catch (err) {
+      setError(err.message || 'Failed to delete notes. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const wordCount = useMemo(() => {
+    const trimmed = form.content.trim()
+    return trimmed ? trimmed.split(/\s+/).length : 0
+  }, [form.content])
+
   // Fix: actually use the imported skeleton while loading
   if (notesLoading || subjectsLoading) return <NotesSkeleton />
+
+  const ToastBanner = toast && (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 dark:bg-gray-700 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in">
+      <Check size={14} className="text-emerald-400" /> {toast}
+    </div>
+  )
 
   /* ── Editor view ── */
   if (view === 'editor') {
     const subject = subjects.find(s => s.id === form.subjectId)
+    const ts = editing ? noteTimestamp(editing) : null
     return (
       <>
         <div className="space-y-4 h-full">
@@ -187,7 +292,7 @@ export default function Notes() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <select
               value={form.subjectId}
               onChange={e => setForm(f => ({ ...f, subjectId: e.target.value }))}
@@ -199,6 +304,14 @@ export default function Notes() {
             {subject && (
               <span className={`text-xs px-2 py-0.5 rounded-full border ${subject.color.light} ${subject.color.border} ${subject.color.text}`}>
                 {subject.name}
+              </span>
+            )}
+            {ts && (
+              <span
+                className="text-xs text-gray-400 dark:text-gray-500 ml-auto"
+                title={`Created ${absoluteTime(editing.created_at)}${editing.updated_at ? ` · Last edited ${absoluteTime(editing.updated_at)}` : ''}`}
+              >
+                {ts.label} {timeAgo(ts.date)}
               </span>
             )}
           </div>
@@ -216,8 +329,13 @@ export default function Notes() {
             onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
             placeholder="Start writing your note here..."
             className="w-full bg-transparent text-gray-700 dark:text-gray-300 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none resize-none leading-relaxed"
-            style={{ minHeight: '60vh' }}
+            style={{ minHeight: '55vh' }}
           />
+
+          <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+            <span>{wordCount} word{wordCount !== 1 ? 's' : ''}</span>
+            {isDirty(form, editing) && <span className="text-amber-500 dark:text-amber-400">Unsaved changes</span>}
+          </div>
 
           {error && <p className="text-red-600 dark:text-red-400 text-xs">{error}</p>}
         </div>
@@ -293,6 +411,8 @@ export default function Notes() {
             </div>
           </div>
         )}
+
+        {ToastBanner}
       </>
     )
   }
@@ -309,12 +429,12 @@ export default function Notes() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {notes.length > 0 && (
+            {sorted.length > 0 && (
               <button
                 onClick={() => { setError(''); setConfirmDeleteAll(true) }}
                 className="text-sm text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 border border-gray-200 dark:border-gray-700 hover:border-red-200 dark:hover:border-red-800 px-4 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
               >
-                Delete All
+                {hasActiveFilter ? 'Delete Shown' : 'Delete All'}
               </button>
             )}
             <button
@@ -345,23 +465,34 @@ export default function Notes() {
             <option value="all">All subjects</option>
             {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
+          <div className="relative">
+            <ArrowUpDown size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg pl-8 pr-3 py-2 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition appearance-none"
+            >
+              {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
         </div>
 
-        {filtered.length === 0 && (
+        {sorted.length === 0 && (
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-12 text-center">
             <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800 flex items-center justify-center mx-auto mb-3">
               <StickyNote size={20} className="text-indigo-500 dark:text-indigo-400" />
             </div>
             <p className="text-gray-900 dark:text-white font-medium mb-1">
-              {search ? 'No notes match your search' : 'No notes yet'}
+              {hasActiveFilter ? 'No notes match your filters' : 'No notes yet'}
             </p>
             <p className="text-gray-500 dark:text-gray-400 text-sm">Click "New Note" to start writing.</p>
           </div>
         )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map(note => {
+          {sorted.map(note => {
             const subject = subjects.find(s => s.id === note.subject_id)
+            const ts = noteTimestamp(note)
             return (
               <div
                 key={note.id}
@@ -391,7 +522,12 @@ export default function Notes() {
                       {subject.name}
                     </span>
                   ) : <span />}
-                  <span className="text-xs text-gray-400 dark:text-gray-500">{timeAgo(note.updated_at)}</span>
+                  <span
+                    className="text-xs text-gray-400 dark:text-gray-500"
+                    title={`Created ${absoluteTime(note.created_at)}${note.updated_at ? ` · Last edited ${absoluteTime(note.updated_at)}` : ''}`}
+                  >
+                    {ts.label} {timeAgo(ts.date)}
+                  </span>
                 </div>
               </div>
             )
@@ -437,7 +573,7 @@ export default function Notes() {
         </div>
       )}
 
-      {/* Delete All confirm modal */}
+      {/* Delete All / Delete Shown confirm modal */}
       {confirmDeleteAll && (
         <div
           className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
@@ -448,10 +584,13 @@ export default function Notes() {
               <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center justify-center mx-auto mb-3">
                 <Trash2 size={20} className="text-red-500 dark:text-red-400" />
               </div>
-              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Delete All Notes?</h3>
+              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">
+                {hasActiveFilter ? 'Delete These Notes?' : 'Delete All Notes?'}
+              </h3>
               <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                This will permanently delete all{' '}
-                <span className="text-gray-900 dark:text-white font-medium">{notes.length}</span> note{notes.length !== 1 ? 's' : ''}. This cannot be undone.
+                This will permanently delete{' '}
+                <span className="text-gray-900 dark:text-white font-medium">{sorted.length}</span>{' '}
+                {hasActiveFilter ? 'currently shown ' : ''}note{sorted.length !== 1 ? 's' : ''}. This cannot be undone.
               </p>
               {error && <p className="text-red-600 dark:text-red-400 text-xs mt-2">{error}</p>}
             </div>
@@ -468,12 +607,14 @@ export default function Notes() {
                 disabled={deleting}
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg py-2 text-sm transition-colors disabled:opacity-40"
               >
-                {deleting ? 'Deleting…' : 'Yes, Delete All'}
+                {deleting ? 'Deleting…' : hasActiveFilter ? 'Yes, Delete Shown' : 'Yes, Delete All'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {ToastBanner}
     </>
   )
 }

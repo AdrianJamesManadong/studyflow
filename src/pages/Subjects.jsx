@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSubjects } from '../hooks/useSubjects'
 import { useAssignments } from '../hooks/useAssignments'
+import { useReminders } from '../hooks/useReminders'
+import { useNotes } from '../hooks/useNotes'
 import { SubjectsSkeleton } from '../components/Skeleton'
-import { BookOpen, Trash2, Check, AlertTriangle, User, MapPin, Clock, GraduationCap, Plus, X } from 'lucide-react'
+import { BookOpen, Trash2, Check, AlertTriangle, User, MapPin, Clock, GraduationCap, Plus, X, Bell, StickyNote } from 'lucide-react'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -66,6 +68,8 @@ function formatScheduleBlock(block) {
 export default function Subjects() {
   const { subjects, addSubject, editSubject, deleteSubject, COLORS, loading } = useSubjects()
   const { assignments } = useAssignments()
+  const { reminders } = useReminders()
+  const { notes } = useNotes()
 
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -231,6 +235,17 @@ export default function Subjects() {
   const pendingCount = (subjectId) =>
     assignments.filter(a => a.subject_id === subjectId && a.status !== 'done').length
 
+  // Reminder count per subject
+  const reminderCount = (subjectId) =>
+    reminders.filter(r => r.subject_id === subjectId).length
+
+  const pendingReminderCount = (subjectId) =>
+    reminders.filter(r => r.subject_id === subjectId && !r.is_done).length
+
+  // Note count per subject
+  const noteCount = (subjectId) =>
+    notes.filter(n => n.subject_id === subjectId).length
+
   const totalLinkedAssignments = subjects.reduce(
     (sum, s) => sum + assignmentCount(s.id),
     0
@@ -290,6 +305,14 @@ export default function Subjects() {
           const pending = pendingCount(subject.id)
           const done = total - pending
           const progress = total > 0 ? Math.round((done / total) * 100) : null
+
+          const totalReminders = reminderCount(subject.id)
+          const pendingReminders = pendingReminderCount(subject.id)
+          const doneReminders = totalReminders - pendingReminders
+          const reminderProgress = totalReminders > 0 ? Math.round((doneReminders / totalReminders) * 100) : null
+
+          const totalNotes = noteCount(subject.id)
+
           const scheduleBlocks = normalizeSchedules(subject).filter(
             b => b.days.length || b.startTime || b.room
           )
@@ -347,7 +370,7 @@ export default function Subjects() {
                 )}
               </div>
 
-              {/* Progress bar */}
+              {/* Assignment progress bar */}
               {total > 0 && (
                 <div className="space-y-1">
                   <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -357,6 +380,40 @@ export default function Subjects() {
                     />
                   </div>
                   <p className="text-xs text-gray-400 dark:text-gray-500 text-right">{progress}% complete</p>
+                </div>
+              )}
+
+              {/* Reminder stats + progress bar */}
+              {totalReminders > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <Bell size={12} /> {totalReminders} reminder{totalReminders !== 1 ? 's' : ''}
+                    </span>
+                    {pendingReminders > 0 && (
+                      <span className="text-blue-600 dark:text-blue-400">{pendingReminders} upcoming</span>
+                    )}
+                    {pendingReminders === 0 && (
+                      <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <Check size={12} /> All cleared
+                      </span>
+                    )}
+                  </div>
+                  <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500 bg-blue-500"
+                      style={{ width: `${reminderProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 text-right">{reminderProgress}% cleared</p>
+                </div>
+              )}
+
+              {/* Note count (no bar — notes don't have a done/undone state) */}
+              {totalNotes > 0 && (
+                <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  <StickyNote size={12} className="flex-shrink-0" />
+                  <span>{totalNotes} note{totalNotes !== 1 ? 's' : ''}</span>
                 </div>
               )}
 

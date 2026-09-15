@@ -62,6 +62,12 @@ const QUICK_ACTIONS = [
   { label: 'AI Assistant',   Icon: Bot,           path: '/dashboard/ai'          },
 ]
 
+// How long an announcement stays visible on the dashboard after it was
+// created, regardless of how many newer ones have been posted since.
+// Bump this if "a couple of days" should mean something longer.
+const ANNOUNCEMENT_VISIBLE_DAYS = 2
+const ANNOUNCEMENT_VISIBLE_MS = ANNOUNCEMENT_VISIBLE_DAYS * 24 * 60 * 60 * 1000
+
 /* ─── pure helpers (outside component) ─── */
 function getGreeting() {
   const h = new Date().getHours()
@@ -138,6 +144,14 @@ export default function DashboardHome() {
       })
     return () => { cancelled = true }
   }, [])
+
+  // Announcements older than ANNOUNCEMENT_VISIBLE_DAYS quietly drop off the
+  // dashboard even though they're still sitting in the `announcements` table —
+  // this only filters what's shown here, it never deletes or edits the row.
+  const visibleAnnouncements = useMemo(() => {
+    const cutoff = Date.now() - ANNOUNCEMENT_VISIBLE_MS
+    return announcements.filter(a => new Date(a.created_at).getTime() >= cutoff)
+  }, [announcements])
 
   // Memoised derived data
   const pendingAssignments = useMemo(
@@ -394,9 +408,9 @@ export default function DashboardHome() {
           </div>
         )}
 
-        {!annLoading && !annError && announcements.length > 0 && (
+        {!annLoading && !annError && visibleAnnouncements.length > 0 && (
           <div className="space-y-2.5" style={fadeUp(60)}>
-            {announcements.map((a, i) => {
+            {visibleAnnouncements.map((a, i) => {
               const cfg = ANN_CONFIG[a.type] ?? ANN_CONFIG.info
               const ts = new Date(a.created_at).toLocaleDateString('en-US', {
                 month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',

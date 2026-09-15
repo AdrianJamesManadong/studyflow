@@ -248,7 +248,7 @@ export default function About() {
             </h3>
             <div className="flex items-center justify-center gap-1.5 flex-wrap mt-2">
               <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-                2nd Year BSIT
+                3rd Year BSIT
               </span>
             </div>
             <p className="text-gray-400 dark:text-gray-500 text-xs font-mono mt-1.5 flex items-center justify-center gap-1">
