@@ -74,7 +74,8 @@ export function AuthProvider({ children }) {
 
   const userWithName = user ? {
     ...user,
-    name: user.user_metadata?.name || user.email
+    name: user.user_metadata?.name || user.user_metadata?.full_name || user.email.split('@')[0],
+    avatarUrl: user.user_metadata?.avatar_url || null,
   } : null
 
   if (loading) return (

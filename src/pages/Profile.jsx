@@ -60,55 +60,105 @@ function getStrength(pw) {
   return { score, color: colors[score], label: labels[score] }
 }
 
+// Only formats storage will actually serve safely as an <img>. SVG is
+// deliberately excluded: it can carry inline <script>/onload handlers, and
+// since avatars are opened directly from a public bucket URL, an uploaded
+// SVG would execute on that origin — stored XSS.
+const ALLOWED_AVATAR_TYPES = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+}
+
+const MIN_PASSWORD_LENGTH = 8
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Profile() {
   const { user } = useAuth()
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('profile')
   const fileInputRef = useRef(null)
 
   // Avatar
-  const [avatarUrl, setAvatarUrl] = useState(user?.user_metadata?.avatar_url || '')
+  const [avatarUrl, setAvatarUrl] = useState('')
   const [avatarPreview, setAvatarPreview] = useState(null)
   const [avatarFile, setAvatarFile] = useState(null)
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarError, setAvatarError] = useState('')
 
   // Profile form
-  const [name, setName] = useState(user?.user_metadata?.name || '')
-  const [bio, setBio] = useState(user?.user_metadata?.bio || '')
-  const [school, setSchool] = useState(user?.user_metadata?.school || '')
-  const [yearLevel, setYearLevel] = useState(user?.user_metadata?.year_level || '')
+  const [name, setName] = useState('')
+  const [bio, setBio] = useState('')
+  const [school, setSchool] = useState('')
+  const [yearLevel, setYearLevel] = useState('')
   const [nameLoading, setNameLoading] = useState(false)
   const [nameSuccess, setNameSuccess] = useState(false)
   const [nameError, setNameError] = useState('')
 
   // Password form
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passLoading, setPassLoading] = useState(false)
   const [passSuccess, setPassSuccess] = useState(false)
   const [passError, setPassError] = useState('')
+  const [showCurrent, setShowCurrent] = useState(false)
   const [showNew, setShowNew] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
+  // Danger zone
+  const [activeTab, setActiveTab] = useState('profile')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
   const strength = getStrength(newPassword)
 
+  // Fix: user often arrives asynchronously (session resolves after mount),
+  // so the form fields must sync from it via an effect rather than only
+  // reading it once in useState's initializer, or they stay blank forever
+  // when AuthContext starts as null.
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 1000)
-    return () => clearTimeout(timer)
-  }, [])
+    if (!user) return
+    const m = user.user_metadata || {}
+    setName(m.name || '')
+    setBio(m.bio || '')
+    setSchool(m.school || '')
+    setYearLevel(m.year_level || '')
+    setAvatarUrl(m.avatar_url || '')
+  }, [user])
+
+  // Fix: revoke the object URL for any preview we created, so selecting a
+  // new avatar (or leaving the page) doesn't leak the previous blob.
+  useEffect(() => {
+    return () => { if (avatarPreview) URL.revokeObjectURL(avatarPreview) }
+  }, [avatarPreview])
+
+  // Fix: clear success-message timers on unmount so they don't try to
+  // setState after the component is gone.
+  useEffect(() => {
+    if (!nameSuccess) return
+    const t = setTimeout(() => setNameSuccess(false), 3000)
+    return () => clearTimeout(t)
+  }, [nameSuccess])
+
+  useEffect(() => {
+    if (!passSuccess) return
+    const t = setTimeout(() => setPassSuccess(false), 3000)
+    return () => clearTimeout(t)
+  }, [passSuccess])
 
   // ── Avatar handlers ──────────────────────────────────────────────────────
   function handleAvatarSelect(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      setAvatarError('Please select an image file')
+    // Fix: allowlist instead of a type-prefix check, so SVG can't slip through.
+    if (!ALLOWED_AVATAR_TYPES[file.type]) {
+      setAvatarError('Use a JPG, PNG, WebP, or GIF image.')
+      e.target.value = ''
       return
     }
     if (file.size > 2 * 1024 * 1024) {
       setAvatarError('Image must be smaller than 2 MB')
+      e.target.value = ''
       return
     }
     setAvatarError('')
@@ -128,12 +178,14 @@ export default function Profile() {
     setAvatarUploading(true)
     setAvatarError('')
 
-    const ext = avatarFile.name.split('.').pop()
+    // Fix: derive the extension from the validated MIME type rather than the
+    // filename, so a file with no/wrong extension can't produce a bad path.
+    const ext = ALLOWED_AVATAR_TYPES[avatarFile.type]
     const path = `avatars/${user.id}.${ext}`
 
     const { error: uploadError } = await supabase.storage
       .from('profiles')
-      .upload(path, avatarFile, { upsert: true })
+      .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type })
 
     if (uploadError) {
       setAvatarError(uploadError.message)
@@ -154,6 +206,8 @@ export default function Profile() {
       setAvatarUrl(publicUrl)
       setAvatarFile(null)
       setAvatarPreview(null)
+      // Fix: clear the file input so re-selecting the same file still fires onChange.
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
     setAvatarUploading(false)
   }
@@ -178,7 +232,6 @@ export default function Profile() {
       setNameError(error.message)
     } else {
       setNameSuccess(true)
-      setTimeout(() => setNameSuccess(false), 3000)
     }
     setNameLoading(false)
   }
@@ -187,15 +240,38 @@ export default function Profile() {
   async function handleUpdatePassword() {
     setPassError('')
     setPassSuccess(false)
-    if (newPassword.length < 6) { setPassError('Password must be at least 6 characters'); return }
+
+    if (!currentPassword) { setPassError('Enter your current password'); return }
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setPassError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
+      return
+    }
     if (newPassword !== confirmPassword) { setPassError('Passwords do not match'); return }
+
     setPassLoading(true)
+
+    // Fix: require re-entering the current password before changing it.
+    // Supabase issues a session-scoped update with no re-auth check of its
+    // own, so anyone at an unlocked, signed-in browser could otherwise lock
+    // the real owner out.
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    })
+    if (verifyError) {
+      setPassError('Current password is incorrect')
+      setPassLoading(false)
+      return
+    }
+
     const { error } = await supabase.auth.updateUser({ password: newPassword })
-    if (error) { setPassError(error.message) } else {
+    if (error) {
+      setPassError(error.message)
+    } else {
       setPassSuccess(true)
+      setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
-      setTimeout(() => setPassSuccess(false), 3000)
     }
     setPassLoading(false)
   }
@@ -206,15 +282,38 @@ export default function Profile() {
       'Are you sure you want to delete your account? This will permanently delete all your data. This cannot be undone.'
     )
     if (!confirmed) return
-    try {
-      await supabase.from('assignments').delete().eq('user_id', user.id)
-      await supabase.from('grades').delete().eq('user_id', user.id)
-      await supabase.from('notes').delete().eq('user_id', user.id)
-      await supabase.from('subjects').delete().eq('user_id', user.id)
-      await supabase.auth.signOut()
-    } catch {
-      alert('Something went wrong. Please try again.')
+
+    setDeleting(true)
+    setDeleteError('')
+
+    // Fix: supabase-js resolves with { error } on a failed query rather than
+    // throwing, so the old try/catch never caught a failed delete — rows
+    // could survive while the user got signed out anyway. Check each result.
+    const tables = ['assignments', 'grades', 'notes', 'subjects']
+    for (const table of tables) {
+      const { error } = await supabase.from(table).delete().eq('user_id', user.id)
+      if (error) {
+        setDeleteError(`Couldn't delete ${table}: ${error.message}`)
+        setDeleting(false)
+        return
+      }
     }
+
+    // Fix: deleting the auth user itself requires the service-role key,
+    // which must never live in client code. This calls a server-side Edge
+    // Function that performs supabase.auth.admin.deleteUser(user.id).
+    // See supabase/functions/delete-account/index.ts.
+    const { error: fnError } = await supabase.functions.invoke('delete-account')
+    if (fnError) {
+      setDeleteError(
+        'Your data was deleted, but the account itself could not be removed. Please contact support.'
+      )
+      setDeleting(false)
+      return
+    }
+
+    await supabase.auth.signOut()
+    setDeleting(false)
   }
 
   const tabs = [
@@ -228,24 +327,23 @@ export default function Profile() {
     '1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year', 'Graduate',
   ]
 
-  if (loading) return <ProfileSkeleton />
+  // Fix: gate on real data instead of a fixed 1s timer — shows the skeleton
+  // for exactly as long as the session actually takes to resolve.
+  if (!user) return <ProfileSkeleton />
 
   const displayAvatar = avatarPreview || avatarUrl
 
   return (
     <>
       <style>{`
-        @keyframes shimmer {
-          0%   { background-position: -600px 0; }
-          100% { background-position:  600px 0; }
-        }
         @keyframes fadeSlide {
           from { opacity: 0; transform: translateY(6px); }
           to   { opacity: 1; transform: translateY(0); }
         }
         .panel-animate { animation: fadeSlide 0.2s ease; }
         .avatar-hover-overlay { opacity: 0; transition: opacity 0.2s; }
-        .avatar-wrapper:hover .avatar-hover-overlay { opacity: 1; }
+        .avatar-wrapper:hover .avatar-hover-overlay,
+        .avatar-wrapper:focus-visible .avatar-hover-overlay { opacity: 1; }
       `}</style>
 
       <div className="max-w-2xl mx-auto space-y-4">
@@ -258,8 +356,13 @@ export default function Profile() {
 
         {/* Avatar card */}
         <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-5 flex items-center gap-5 shadow-sm">
-          {/* Clickable avatar */}
-          <div className="relative avatar-wrapper flex-shrink-0 cursor-pointer" onClick={() => !avatarPreview && fileInputRef.current?.click()}>
+          {/* Fix: button instead of div, so avatar change is keyboard-reachable and focusable */}
+          <button
+            type="button"
+            className="relative avatar-wrapper flex-shrink-0 cursor-pointer rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+            onClick={() => !avatarPreview && fileInputRef.current?.click()}
+            aria-label="Change avatar"
+          >
             {displayAvatar ? (
               <img
                 src={displayAvatar}
@@ -271,32 +374,30 @@ export default function Profile() {
                 {name?.[0]?.toUpperCase() ?? '?'}
               </div>
             )}
-            {/* Hover overlay */}
             {!avatarPreview && (
               <div className="avatar-hover-overlay absolute inset-0 rounded-full bg-black/50 flex flex-col items-center justify-center gap-0.5">
                 <Camera size={16} className="text-white" />
                 <span className="text-white text-[10px] font-medium">Change</span>
               </div>
             )}
-            {/* Pending badge */}
             {avatarPreview && (
               <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-amber-500 border-2 border-white dark:border-gray-800 flex items-center justify-center">
                 <span className="text-[9px] text-white font-bold">!</span>
               </div>
             )}
-          </div>
+          </button>
 
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/gif"
             className="hidden"
             onChange={handleAvatarSelect}
           />
 
           <div className="flex-1 min-w-0">
             <p className="text-gray-900 dark:text-white font-medium text-base leading-tight">{name || 'No name set'}</p>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5 truncate">{user?.email}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5 truncate">{user.email}</p>
             {school && (
               <p className="text-gray-400 dark:text-gray-500 text-xs mt-0.5 truncate flex items-center gap-1">
                 <MapPin size={11} /> {school}{yearLevel ? ` · ${yearLevel}` : ''}
@@ -304,7 +405,7 @@ export default function Profile() {
             )}
             <div className="flex items-center gap-2 mt-1.5">
               <p className="text-gray-400 dark:text-gray-500 text-xs font-mono">
-                Member since {new Date(user?.created_at || Date.now()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                Member since {new Date(user.created_at || Date.now()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </p>
               <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 font-medium">
                 Active
@@ -321,7 +422,8 @@ export default function Profile() {
             <div className="flex gap-2">
               <button
                 onClick={handleAvatarCancel}
-                className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                disabled={avatarUploading}
+                className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -378,8 +480,9 @@ export default function Profile() {
 
             {/* Name */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Full name</label>
+              <label htmlFor="profile-name" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Full name</label>
               <input
+                id="profile-name"
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="Your full name"
@@ -389,9 +492,10 @@ export default function Profile() {
 
             {/* Email (read-only) */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email address</label>
+              <label htmlFor="profile-email" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email address</label>
               <input
-                value={user?.email}
+                id="profile-email"
+                value={user.email || ''}
                 disabled
                 className="w-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-400 dark:text-gray-500 cursor-not-allowed"
               />
@@ -400,8 +504,9 @@ export default function Profile() {
 
             {/* School */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">School / University</label>
+              <label htmlFor="profile-school" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">School / University</label>
               <input
+                id="profile-school"
                 value={school}
                 onChange={e => setSchool(e.target.value)}
                 placeholder="e.g. University of the Philippines"
@@ -411,8 +516,9 @@ export default function Profile() {
 
             {/* Year level */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Year level</label>
+              <label htmlFor="profile-year" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Year level</label>
               <select
+                id="profile-year"
                 value={yearLevel}
                 onChange={e => setYearLevel(e.target.value)}
                 className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition appearance-none cursor-pointer"
@@ -424,8 +530,9 @@ export default function Profile() {
 
             {/* Bio */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Bio <span className="normal-case text-gray-400 dark:text-gray-500">(optional)</span></label>
+              <label htmlFor="profile-bio" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Bio <span className="normal-case text-gray-400 dark:text-gray-500">(optional)</span></label>
               <textarea
+                id="profile-bio"
                 value={bio}
                 onChange={e => setBio(e.target.value)}
                 placeholder="A short bio about yourself…"
@@ -467,9 +574,27 @@ export default function Profile() {
             <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Change password</h3>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">New password</label>
+              <label htmlFor="pw-current" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Current password</label>
               <div className="relative">
                 <input
+                  id="pw-current"
+                  type={showCurrent ? 'text' : 'password'}
+                  value={currentPassword}
+                  onChange={e => setCurrentPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition pr-10"
+                />
+                <button type="button" onClick={() => setShowCurrent(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition">
+                  {showCurrent ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="pw-new" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">New password</label>
+              <div className="relative">
+                <input
+                  id="pw-new"
                   type={showNew ? 'text' : 'password'}
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
@@ -502,9 +627,10 @@ export default function Profile() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Confirm new password</label>
+              <label htmlFor="pw-confirm" className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Confirm new password</label>
               <div className="relative">
                 <input
+                  id="pw-confirm"
                   type={showConfirm ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
@@ -538,7 +664,7 @@ export default function Profile() {
 
             <button
               onClick={handleUpdatePassword}
-              disabled={passLoading || !newPassword || !confirmPassword}
+              disabled={passLoading || !currentPassword || !newPassword || !confirmPassword}
               className="inline-flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 disabled:opacity-40 disabled:cursor-not-allowed text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 font-medium px-5 py-2.5 rounded-lg transition text-sm"
             >
               {passLoading ? (
@@ -556,16 +682,25 @@ export default function Profile() {
               <div>
                 <p className="text-gray-900 dark:text-white text-sm font-medium">Delete account</p>
                 <p className="text-gray-500 dark:text-gray-400 text-xs mt-1 max-w-sm leading-relaxed">
-                  Permanently removes all your subjects, assignments, grades, and notes. This action cannot be undone.
+                  Permanently removes all your subjects, assignments, grades, and notes, and closes your account. This action cannot be undone.
                 </p>
               </div>
               <button
                 onClick={handleDeleteAccount}
-                className="inline-flex items-center gap-2 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium px-5 py-2.5 rounded-lg transition text-sm flex-shrink-0"
+                disabled={deleting}
+                className="inline-flex items-center gap-2 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium px-5 py-2.5 rounded-lg transition text-sm flex-shrink-0"
               >
-                Delete account
+                {deleting ? (
+                  <><span className="inline-block w-3.5 h-3.5 border-2 border-red-300 dark:border-red-700 border-t-red-600 dark:border-t-red-400 rounded-full animate-spin" />Deleting…</>
+                ) : 'Delete account'}
               </button>
             </div>
+            {deleteError && (
+              <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2.5">
+                <AlertTriangle size={14} className="text-red-500 dark:text-red-400" />
+                <p className="text-red-600 dark:text-red-400 text-sm">{deleteError}</p>
+              </div>
+            )}
           </div>
         )}
 

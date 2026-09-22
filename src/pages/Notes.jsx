@@ -12,7 +12,15 @@ import {
   X,
   Check,
   ArrowUpDown,
+  FileText,
+  Clock3,
+  Layers,
 } from 'lucide-react'
+
+/* ─── animation helper (same pattern as Dashboard / Assignments / etc.) ─── */
+const fadeUp = (delay = 0) => ({
+  animation: `fadeUp 0.5s cubic-bezier(0.22,1,0.36,1) ${delay}ms both`,
+})
 
 // Fix: outside component — never recreated on render.
 // Scales from seconds up through years, then falls back to an actual date
@@ -249,11 +257,23 @@ export default function Notes() {
     return trimmed ? trimmed.split(/\s+/).length : 0
   }, [form.content])
 
+  // Summary stats for the top row — total notes, notes touched in the last
+  // 7 days, and how many distinct subjects have at least one note.
+  const summary = useMemo(() => {
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+    const recent = notes.filter(n => new Date(n.updated_at || n.created_at).getTime() >= weekAgo)
+    const subjectsCovered = new Set(notes.filter(n => n.subject_id).map(n => n.subject_id)).size
+    return { total: notes.length, recent: recent.length, subjectsCovered }
+  }, [notes])
+
   // Fix: actually use the imported skeleton while loading
   if (notesLoading || subjectsLoading) return <NotesSkeleton />
 
   const ToastBanner = toast && (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 dark:bg-gray-700 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in">
+    <div
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 dark:bg-gray-700 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg flex items-center gap-2"
+      style={{ animation: 'toastIn 0.3s cubic-bezier(0.22,1,0.36,1) both' }}
+    >
       <Check size={14} className="text-emerald-400" /> {toast}
     </div>
   )
@@ -264,7 +284,17 @@ export default function Notes() {
     const ts = editing ? noteTimestamp(editing) : null
     return (
       <>
-        <div className="space-y-4 h-full">
+        <style>{`
+          @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes toastIn {
+            from { opacity: 0; transform: translate(-50%, 10px); }
+            to   { opacity: 1; transform: translate(-50%, 0); }
+          }
+        `}</style>
+        <div className="space-y-4 h-full" style={fadeUp(0)}>
           <div className="flex items-center justify-between">
             {/* Fix: warn on unsaved changes before going back */}
             <button
@@ -285,7 +315,7 @@ export default function Notes() {
               <button
                 onClick={handleSave}
                 disabled={!form.title.trim() || saving}
-                className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg shadow-sm transition-colors"
+                className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg shadow-sm transition-colors hover:-translate-y-0.5"
               >
                 {saving ? 'Saving…' : 'Save Note'}
               </button>
@@ -420,8 +450,23 @@ export default function Notes() {
   /* ── List view ── */
   return (
     <>
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes toastIn {
+          from { opacity: 0; transform: translate(-50%, 10px); }
+          to   { opacity: 1; transform: translate(-50%, 0); }
+        }
+        .n-stat { transition: transform .18s cubic-bezier(.22,1,.36,1); }
+        .n-stat:hover { transform: translateY(-2px); }
+        .n-card { transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s ease, border-color .2s; }
+        .n-card:hover { transform: translateY(-3px); }
+      `}</style>
+
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between" style={fadeUp(0)}>
           <div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Notes</h2>
             <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
@@ -439,14 +484,41 @@ export default function Notes() {
             )}
             <button
               onClick={openNew}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2 hover:-translate-y-0.5"
             >
               <Plus size={15} /> New Note
             </button>
           </div>
         </div>
 
-        <div className="flex gap-3 flex-wrap">
+        {/* ── Summary stat cards ── */}
+        {notes.length > 0 && (
+          <div className="grid grid-cols-3 gap-3" style={fadeUp(60)}>
+            <div className="n-stat bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center gap-2 text-indigo-500 dark:text-indigo-400 mb-1.5">
+                <FileText size={15} />
+                <span className="text-[11px] font-semibold uppercase tracking-wider">Total Notes</span>
+              </div>
+              <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{summary.total}</div>
+            </div>
+            <div className="n-stat bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center gap-2 text-emerald-500 dark:text-emerald-400 mb-1.5">
+                <Clock3 size={15} />
+                <span className="text-[11px] font-semibold uppercase tracking-wider">This Week</span>
+              </div>
+              <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{summary.recent}</div>
+            </div>
+            <div className="n-stat bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center gap-2 text-violet-500 dark:text-violet-400 mb-1.5">
+                <Layers size={15} />
+                <span className="text-[11px] font-semibold uppercase tracking-wider">Subjects Covered</span>
+              </div>
+              <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{summary.subjectsCovered}</div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-3 flex-wrap" style={fadeUp(100)}>
           {/* Fix: search input updates immediately, filter debounced */}
           <div className="relative flex-1 min-w-48">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
@@ -478,7 +550,7 @@ export default function Notes() {
         </div>
 
         {sorted.length === 0 && (
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-12 text-center">
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-12 text-center" style={fadeUp(140)}>
             <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800 flex items-center justify-center mx-auto mb-3">
               <StickyNote size={20} className="text-indigo-500 dark:text-indigo-400" />
             </div>
@@ -490,14 +562,15 @@ export default function Notes() {
         )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sorted.map(note => {
+          {sorted.map((note, i) => {
             const subject = subjects.find(s => s.id === note.subject_id)
             const ts = noteTimestamp(note)
             return (
               <div
                 key={note.id}
                 onClick={() => openEdit(note)}
-                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 rounded-xl p-5 cursor-pointer transition-all shadow-sm hover:shadow-md group space-y-3"
+                className="n-card bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 rounded-xl p-5 cursor-pointer shadow-sm hover:shadow-md group space-y-3"
+                style={fadeUp(180 + i * 30)}
               >
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="text-gray-900 dark:text-white font-semibold group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1">

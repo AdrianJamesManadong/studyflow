@@ -19,10 +19,37 @@ import {
   MapPin,
   User,
   Bell,
+  CalendarDays,
+  ListChecks,
 } from 'lucide-react'
+
+/* ─── animation helper (same pattern as Dashboard / Assignments / Notes) ─── */
+const fadeUp = (delay = 0) => ({
+  animation: `fadeUp 0.5s cubic-bezier(0.22,1,0.36,1) ${delay}ms both`,
+})
 
 // Fix: all constants outside component
 const DAYS   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+// Subject schedules can come in with day values in whatever shape the form
+// that saved them used — 'Mon', 'Monday', 'monday', 'MON ', etc. Matching
+// against DAYS with a strict equality check meant anything but the exact
+// 3-letter form silently never matched, so classes could vanish with no
+// error anywhere. This normalizes any reasonable variant to the 3-letter
+// code the rest of the calendar keys off of.
+const DAY_ALIASES = {
+  sun: 'Sun', sunday: 'Sun',
+  mon: 'Mon', monday: 'Mon',
+  tue: 'Tue', tues: 'Tue', tuesday: 'Tue',
+  wed: 'Wed', weds: 'Wed', wednesday: 'Wed',
+  thu: 'Thu', thur: 'Thu', thurs: 'Thu', thursday: 'Thu',
+  fri: 'Fri', friday: 'Fri',
+  sat: 'Sat', saturday: 'Sat',
+}
+function normalizeDay(day) {
+  if (!day) return null
+  return DAY_ALIASES[day.toString().trim().toLowerCase()] || null
+}
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const EVENT_TYPES = ['reminder', 'exam', 'holiday', 'meeting', 'other']
 const EVENT_COLORS = {
@@ -173,7 +200,9 @@ export default function Calendar() {
     const map = {}
     subjects.forEach(s => {
       getSubjectSchedules(s).forEach(block => {
-        (block.days || []).forEach(day => {
+        (block.days || []).forEach(rawDay => {
+          const day = normalizeDay(rawDay)
+          if (!day) return
           if (!map[day]) map[day] = []
           map[day].push({ subject: s, block })
         })
@@ -236,6 +265,15 @@ export default function Calendar() {
     [subjectsByWeekday, todayDate]
   )
 
+  // Summary stats for the top row — mirrors the stat-card pattern used on
+  // Notes: total events this month, items due this week, classes today.
+  const summary = useMemo(() => {
+    const monthEvents = events.filter(e => e.date?.slice(0, 7) === `${current.year}-${String(current.month + 1).padStart(2, '0')}`).length
+    const weekFromNow = todayMs + 7 * 24 * 60 * 60 * 1000
+    const dueThisWeek = assignments.filter(a => a.status !== 'done' && new Date(a.due_date).getTime() >= todayMs && new Date(a.due_date).getTime() <= weekFromNow).length
+    return { monthEvents, dueThisWeek, classesToday: todaysClasses.length }
+  }, [events, assignments, todayMs, current, todaysClasses])
+
   function openAddEvent(day) {
     setForm({ ...EMPTY_FORM, date: day ? toDateStr(current.year, current.month, day) : '' })
     setError('')
@@ -286,426 +324,464 @@ export default function Calendar() {
   }
 
   return (
-    <div className="space-y-6">
+    <>
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .c-stat { transition: transform .18s cubic-bezier(.22,1,.36,1); }
+        .c-stat:hover { transform: translateY(-2px); }
+        .c-day { transition: transform .15s cubic-bezier(.22,1,.36,1), border-color .15s, background-color .15s; }
+        .c-day:hover { transform: translateY(-1px); }
+      `}</style>
 
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Calendar</h2>
-        <div className="flex items-center gap-3 flex-wrap">
-          <button
-            onClick={() => openAddEvent(null)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
-          >
-            <Plus size={15} /> Add Event
-          </button>
-          <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
-            <ChevronLeft size={16} />
-          </button>
-          <span className="text-gray-900 dark:text-white font-semibold w-36 text-center">{MONTHS[current.month]} {current.year}</span>
-          <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      </div>
+      <div className="space-y-6">
 
-      <div className="flex flex-col lg:flex-row gap-6">
-
-        {/* Calendar grid */}
-        <div className="flex-1">
-          <div className="grid grid-cols-7 mb-2">
-            {DAYS.map(d => (
-              <div key={d} className="text-center text-xs text-gray-500 dark:text-gray-400 font-medium py-2">
-                <span className="hidden sm:inline">{d}</span>
-                <span className="sm:hidden">{d[0]}</span>
-              </div>
-            ))}
+        {/* Header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" style={fadeUp(0)}>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Calendar</h2>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={() => openAddEvent(null)}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2 hover:-translate-y-0.5"
+            >
+              <Plus size={15} /> Add Event
+            </button>
+            <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-gray-900 dark:text-white font-semibold w-36 text-center">{MONTHS[current.month]} {current.year}</span>
+            <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+              <ChevronRight size={16} />
+            </button>
           </div>
+        </div>
 
-          <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
-            {cells.map((day, i) => {
-              const items      = getItemsForDay(day)
-              const totalItems = items.classes.length + items.assignments.length + items.reminders.length + items.grades.length + items.events.length
-              const isSelected = selected === day
+        {/* Summary stat cards */}
+        <div className="grid grid-cols-3 gap-3" style={fadeUp(60)}>
+          <div className="c-stat bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-indigo-500 dark:text-indigo-400 mb-1.5">
+              <CalendarDays size={15} />
+              <span className="text-[11px] font-semibold uppercase tracking-wider">Events This Month</span>
+            </div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{summary.monthEvents}</div>
+          </div>
+          <div className="c-stat bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-amber-500 dark:text-amber-400 mb-1.5">
+              <ListChecks size={15} />
+              <span className="text-[11px] font-semibold uppercase tracking-wider">Due This Week</span>
+            </div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{summary.dueThisWeek}</div>
+          </div>
+          <div className="c-stat bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-violet-500 dark:text-violet-400 mb-1.5">
+              <GraduationCap size={15} />
+              <span className="text-[11px] font-semibold uppercase tracking-wider">Classes Today</span>
+            </div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{summary.classesToday}</div>
+          </div>
+        </div>
 
-              return (
-                <div
-                  key={i}
-                  onClick={() => day && setSelected(isSelected ? null : day)}
-                  onDoubleClick={() => day && openAddEvent(day)}
-                  className={`min-h-12 lg:min-h-16 rounded-lg p-1 lg:p-1.5 transition-colors
-                    ${!day ? '' : 'cursor-pointer'}
-                    ${isToday(day)  ? 'bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-300 dark:border-indigo-700' : day ? 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700' : ''}
-                    ${isSelected    ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/40' : ''}
-                  `}
-                >
-                  {day && (
-                    <>
-                      <p className={`text-xs font-medium mb-0.5 lg:mb-1 ${isToday(day) ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                        {day}
-                      </p>
-                      <div className="space-y-0.5 hidden sm:block">
-                        {items.classes.slice(0, 1).map(({ subject, block }, idx) => (
-                          <div key={`${subject.id}-${idx}`} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 ${subject.color.bg} text-white`}>
-                            <GraduationCap size={9} className="flex-shrink-0" /> {subject.name}
-                          </div>
-                        ))}
-                        {items.assignments.slice(0, 1).map(a => {
-                          const subject = subjects.find(s => s.id === a.subject_id)
-                          return (
-                            <div key={a.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1
-                              ${a.status === 'done' ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
-                                : subject ? subject.color.bg + ' text-white'
-                                : 'bg-indigo-600 text-white'}`}>
-                              <FileText size={9} className="flex-shrink-0" /> {a.title}
-                            </div>
-                          )
-                        })}
-                        {items.reminders.slice(0, 1).map(r => (
-                          <div key={r.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1
-                            ${r.is_done ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500' : 'bg-pink-600 text-white'}`}>
-                            <Bell size={9} className="flex-shrink-0" /> {r.title}
-                          </div>
-                        ))}
-                        {items.events.slice(0, 1).map(e => {
-                          const color = EVENT_COLORS[e.color] || EVENT_COLORS.indigo
-                          return (
-                            <div key={e.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 ${color.bg} text-white`}>
-                              <Star size={9} className="flex-shrink-0" /> {e.title}
-                            </div>
-                          )
-                        })}
-                        {items.grades.length > 0 && (
-                          <div className="text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 bg-emerald-600 text-white">
-                            <BarChart3 size={9} className="flex-shrink-0" /> {items.grades.length} grade{items.grades.length > 1 ? 's' : ''}
-                          </div>
-                        )}
-                        {totalItems > 4 && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 px-1">+{totalItems - 4} more</p>
-                        )}
-                      </div>
-                      {/* Mobile dots */}
-                      <div className="flex gap-0.5 flex-wrap sm:hidden mt-0.5">
-                        {items.classes.length > 0     && <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />}
-                        {items.assignments.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />}
-                        {items.reminders.length > 0   && <span className="w-1.5 h-1.5 rounded-full bg-pink-500"   />}
-                        {items.events.length > 0      && <span className="w-1.5 h-1.5 rounded-full bg-amber-500"  />}
-                        {items.grades.length > 0      && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"/>}
-                      </div>
-                    </>
-                  )}
+        <div className="flex flex-col lg:flex-row gap-6">
+
+          {/* Calendar grid */}
+          <div className="flex-1" style={fadeUp(100)}>
+            <div className="grid grid-cols-7 mb-2">
+              {DAYS.map(d => (
+                <div key={d} className="text-center text-xs text-gray-500 dark:text-gray-400 font-medium py-2">
+                  <span className="hidden sm:inline">{d}</span>
+                  <span className="sm:hidden">{d[0]}</span>
                 </div>
-              )
-            })}
-          </div>
+              ))}
+            </div>
 
-          {/* Legend */}
-          <div className="flex gap-4 mt-3 flex-wrap">
-            <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-violet-500" /> Classes</div>
-            <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-indigo-500" /> Assignments</div>
-            <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-pink-500" /> Reminders</div>
-            <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Grades</div>
-            <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-amber-500" /> Events</div>
-            <p className="text-xs text-gray-400 dark:text-gray-500 hidden sm:block">Double-click a day to add event</p>
-          </div>
-        </div>
+            <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
+              {cells.map((day, i) => {
+                const items      = getItemsForDay(day)
+                const totalItems = items.classes.length + items.assignments.length + items.reminders.length + items.grades.length + items.events.length
+                const isSelected = selected === day
 
-        {/* Side panel */}
-        <div className="w-full lg:w-64 lg:flex-shrink-0 space-y-3">
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm">
-            {selected ? (
-              <>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-gray-900 dark:text-white font-semibold">{MONTHS[current.month]} {selected}</h3>
-                  <button
-                    onClick={() => openAddEvent(selected)}
-                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium transition-colors"
+                return (
+                  <div
+                    key={i}
+                    onClick={() => day && setSelected(isSelected ? null : day)}
+                    onDoubleClick={() => day && openAddEvent(day)}
+                    className={`c-day min-h-12 lg:min-h-16 rounded-lg p-1 lg:p-1.5
+                      ${!day ? '' : 'cursor-pointer'}
+                      ${isToday(day)  ? 'bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-300 dark:border-indigo-700' : day ? 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700' : ''}
+                      ${isSelected    ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/40' : ''}
+                    `}
                   >
-                    + Event
-                  </button>
-                </div>
-
-                {selectedItems.classes.length === 0 && selectedItems.assignments.length === 0 && selectedItems.reminders.length === 0 && selectedItems.grades.length === 0 && selectedItems.events.length === 0 && (
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">Nothing on this day.</p>
-                )}
-
-                {selectedItems.classes.map(({ subject, block }, idx) => (
-                  <div key={`${subject.id}-${idx}`} className={`border rounded-lg p-3 mb-2 ${subject.color.light} ${subject.color.border}`}>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
-                      <GraduationCap size={13} className="flex-shrink-0" /> {subject.name}
-                    </p>
-                    {(block.startTime || block.endTime) && (
-                      <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 flex items-center gap-1">
-                        <Clock size={11} /> {formatTime(block.startTime)}{block.endTime && ` – ${formatTime(block.endTime)}`}
-                      </p>
-                    )}
-                    {block.room && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
-                        <MapPin size={11} /> {block.room}
-                      </p>
-                    )}
-                    {subject.professor && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
-                        <User size={11} /> {subject.professor}
-                      </p>
+                    {day && (
+                      <>
+                        <p className={`text-xs font-medium mb-0.5 lg:mb-1 ${isToday(day) ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                          {day}
+                        </p>
+                        <div className="space-y-0.5 hidden sm:block">
+                          {items.classes.slice(0, 1).map(({ subject, block }, idx) => (
+                            <div key={`${subject.id}-${idx}`} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 ${subject.color.bg} text-white`}>
+                              <GraduationCap size={9} className="flex-shrink-0" /> {subject.name}
+                            </div>
+                          ))}
+                          {items.assignments.slice(0, 1).map(a => {
+                            const subject = subjects.find(s => s.id === a.subject_id)
+                            return (
+                              <div key={a.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1
+                                ${a.status === 'done' ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                                  : subject ? subject.color.bg + ' text-white'
+                                  : 'bg-indigo-600 text-white'}`}>
+                                <FileText size={9} className="flex-shrink-0" /> {a.title}
+                              </div>
+                            )
+                          })}
+                          {items.reminders.slice(0, 1).map(r => (
+                            <div key={r.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1
+                              ${r.is_done ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500' : 'bg-pink-600 text-white'}`}>
+                              <Bell size={9} className="flex-shrink-0" /> {r.title}
+                            </div>
+                          ))}
+                          {items.events.slice(0, 1).map(e => {
+                            const color = EVENT_COLORS[e.color] || EVENT_COLORS.indigo
+                            return (
+                              <div key={e.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 ${color.bg} text-white`}>
+                                <Star size={9} className="flex-shrink-0" /> {e.title}
+                              </div>
+                            )
+                          })}
+                          {items.grades.length > 0 && (
+                            <div className="text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 bg-emerald-600 text-white">
+                              <BarChart3 size={9} className="flex-shrink-0" /> {items.grades.length} grade{items.grades.length > 1 ? 's' : ''}
+                            </div>
+                          )}
+                          {totalItems > 4 && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 px-1">+{totalItems - 4} more</p>
+                          )}
+                        </div>
+                        {/* Mobile dots */}
+                        <div className="flex gap-0.5 flex-wrap sm:hidden mt-0.5">
+                          {items.classes.length > 0     && <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />}
+                          {items.assignments.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />}
+                          {items.reminders.length > 0   && <span className="w-1.5 h-1.5 rounded-full bg-pink-500"   />}
+                          {items.events.length > 0      && <span className="w-1.5 h-1.5 rounded-full bg-amber-500"  />}
+                          {items.grades.length > 0      && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"/>}
+                        </div>
+                      </>
                     )}
                   </div>
-                ))}
+                )
+              })}
+            </div>
 
-                {selectedItems.assignments.map(a => {
-                  const subject = subjects.find(s => s.id === a.subject_id)
-                  return (
-                    <div key={a.id} className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3 mb-2">
-                      <p className={`text-sm font-medium flex items-center gap-1.5 ${a.status === 'done' ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
-                        <FileText size={13} className="flex-shrink-0" /> {a.title}
+            {/* Legend */}
+            <div className="flex gap-4 mt-3 flex-wrap">
+              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-violet-500" /> Classes</div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-indigo-500" /> Assignments</div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-pink-500" /> Reminders</div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Grades</div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-amber-500" /> Events</div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 hidden sm:block">Double-click a day to add event</p>
+            </div>
+          </div>
+
+          {/* Side panel */}
+          <div className="w-full lg:w-64 lg:flex-shrink-0 space-y-3" style={fadeUp(140)}>
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm">
+              {selected ? (
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-gray-900 dark:text-white font-semibold">{MONTHS[current.month]} {selected}</h3>
+                    <button
+                      onClick={() => openAddEvent(selected)}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium transition-colors"
+                    >
+                      + Event
+                    </button>
+                  </div>
+
+                  {selectedItems.classes.length === 0 && selectedItems.assignments.length === 0 && selectedItems.reminders.length === 0 && selectedItems.grades.length === 0 && selectedItems.events.length === 0 && (
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">Nothing on this day.</p>
+                  )}
+
+                  {selectedItems.classes.map(({ subject, block }, idx) => (
+                    <div key={`${subject.id}-${idx}`} className={`border rounded-lg p-3 mb-2 ${subject.color.light} ${subject.color.border}`}>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
+                        <GraduationCap size={13} className="flex-shrink-0" /> {subject.name}
                       </p>
-                      {a.due_time && <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1"><Clock size={11} /> {formatTime(a.due_time)}</p>}
-                      {subject && (
-                        <span className={`text-xs mt-1 inline-block px-2 py-0.5 rounded-full border ${subject.color.light} ${subject.color.border} ${subject.color.text}`}>
-                          {subject.name}
-                        </span>
+                      {(block.startTime || block.endTime) && (
+                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 flex items-center gap-1">
+                          <Clock size={11} /> {formatTime(block.startTime)}{block.endTime && ` – ${formatTime(block.endTime)}`}
+                        </p>
                       )}
-                      <p className={`text-xs mt-1 capitalize flex items-center gap-1 ${a.priority === 'high' ? 'text-red-600 dark:text-red-400' : a.priority === 'medium' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                        {a.priority} priority {a.status === 'done' && <><CheckCircle2 size={11} /> Done</>}
-                      </p>
+                      {block.room && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
+                          <MapPin size={11} /> {block.room}
+                        </p>
+                      )}
+                      {subject.professor && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
+                          <User size={11} /> {subject.professor}
+                        </p>
+                      )}
                     </div>
-                  )
-                })}
+                  ))}
 
-                {selectedItems.reminders.map(r => {
-                  const subject = subjects.find(s => s.id === r.subject_id)
-                  const linkedAssignment = assignments.find(a => a.id === r.assignment_id)
-                  return (
-                    <div key={r.id} className="bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-900 rounded-lg p-3 mb-2">
-                      <p className={`text-sm font-medium flex items-center gap-1.5 ${r.is_done ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
-                        <Bell size={13} className="flex-shrink-0" /> {r.title}
-                      </p>
-                      {r.due_time && <p className="text-xs text-pink-600 dark:text-pink-400 mt-0.5 flex items-center gap-1"><Clock size={11} /> {formatTime(r.due_time)}</p>}
-                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                  {selectedItems.assignments.map(a => {
+                    const subject = subjects.find(s => s.id === a.subject_id)
+                    return (
+                      <div key={a.id} className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3 mb-2">
+                        <p className={`text-sm font-medium flex items-center gap-1.5 ${a.status === 'done' ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
+                          <FileText size={13} className="flex-shrink-0" /> {a.title}
+                        </p>
+                        {a.due_time && <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1"><Clock size={11} /> {formatTime(a.due_time)}</p>}
                         {subject && (
-                          <span className={`text-xs px-2 py-0.5 rounded-full border ${subject.color.light} ${subject.color.border} ${subject.color.text}`}>
+                          <span className={`text-xs mt-1 inline-block px-2 py-0.5 rounded-full border ${subject.color.light} ${subject.color.border} ${subject.color.text}`}>
                             {subject.name}
                           </span>
                         )}
-                        {linkedAssignment && (
-                          <span className="text-xs px-2 py-0.5 rounded-full border bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400">
-                            {linkedAssignment.title}
-                          </span>
-                        )}
+                        <p className={`text-xs mt-1 capitalize flex items-center gap-1 ${a.priority === 'high' ? 'text-red-600 dark:text-red-400' : a.priority === 'medium' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                          {a.priority} priority {a.status === 'done' && <><CheckCircle2 size={11} /> Done</>}
+                        </p>
                       </div>
-                      <p className={`text-xs mt-1 capitalize flex items-center gap-1 ${r.priority === 'high' ? 'text-red-600 dark:text-red-400' : r.priority === 'medium' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                        {r.priority} priority {r.is_done && <><CheckCircle2 size={11} /> Done</>}
-                      </p>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
 
-                {selectedItems.grades.map(g => {
-                  // Fix: guard division by zero
-                  const pct = g.max_score > 0 ? ((g.score / g.max_score) * 100).toFixed(1) : '0.0'
-                  return (
-                    <div key={g.id} className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3 mb-2">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5"><BarChart3 size={13} /> {g.title}</p>
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{g.score}/{g.max_score} — {pct}%</p>
-                    </div>
-                  )
-                })}
-
-                {selectedItems.events.map(e => {
-                  const color = EVENT_COLORS[e.color] || EVENT_COLORS.indigo
-                  return (
-                    <div key={e.id} className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3 mb-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5"><Star size={13} /> {e.title}</p>
-                        {/* Fix: opens confirm modal instead of inline delete */}
-                        <button
-                          onClick={() => { setError(''); setConfirmDelete(e) }}
-                          className="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                        ><X size={14} /></button>
+                  {selectedItems.reminders.map(r => {
+                    const subject = subjects.find(s => s.id === r.subject_id)
+                    const linkedAssignment = assignments.find(a => a.id === r.assignment_id)
+                    return (
+                      <div key={r.id} className="bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-900 rounded-lg p-3 mb-2">
+                        <p className={`text-sm font-medium flex items-center gap-1.5 ${r.is_done ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
+                          <Bell size={13} className="flex-shrink-0" /> {r.title}
+                        </p>
+                        {r.due_time && <p className="text-xs text-pink-600 dark:text-pink-400 mt-0.5 flex items-center gap-1"><Clock size={11} /> {formatTime(r.due_time)}</p>}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          {subject && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full border ${subject.color.light} ${subject.color.border} ${subject.color.text}`}>
+                              {subject.name}
+                            </span>
+                          )}
+                          {linkedAssignment && (
+                            <span className="text-xs px-2 py-0.5 rounded-full border bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400">
+                              {linkedAssignment.title}
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-xs mt-1 capitalize flex items-center gap-1 ${r.priority === 'high' ? 'text-red-600 dark:text-red-400' : r.priority === 'medium' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                          {r.priority} priority {r.is_done && <><CheckCircle2 size={11} /> Done</>}
+                        </p>
                       </div>
-                      {e.time && <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1"><Clock size={11} /> {formatTime(e.time)}</p>}
-                      <p className={`text-xs mt-1 capitalize ${color.text}`}>{e.type}</p>
-                    </div>
-                  )
-                })}
-              </>
-            ) : (
-              <>
-                {todaysClasses.length > 0 && (
-                  <div className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
-                    <h3 className="text-gray-900 dark:text-white font-semibold mb-3 flex items-center gap-1.5">
-                      <GraduationCap size={15} /> Today's Classes
-                    </h3>
-                    {todaysClasses.map(({ subject, block }, idx) => (
-                      <div key={`${subject.id}-${idx}`} className={`border rounded-lg p-3 mb-2 last:mb-0 ${subject.color.light} ${subject.color.border}`}>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{subject.name}</p>
-                        {(block.startTime || block.endTime) && (
-                          <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 flex items-center gap-1">
-                            <Clock size={11} /> {formatTime(block.startTime)}{block.endTime && ` – ${formatTime(block.endTime)}`}
-                          </p>
-                        )}
-                        {block.room && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
-                            <MapPin size={11} /> {block.room}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                    )
+                  })}
 
-                <h3 className="text-gray-900 dark:text-white font-semibold mb-3">Upcoming</h3>
-                {upcomingItems.length === 0 && (
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">Nothing upcoming.</p>
-                )}
-                {upcomingItems.map((item, i) => {
-                  const ItemIcon = item.type === 'assignment' ? FileText : item.type === 'reminder' ? Bell : Star
-                  return (
-                    <div key={i} className="mb-2 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3">
-                      <p className="text-sm text-gray-900 dark:text-white font-medium flex items-center gap-1.5">
-                        <ItemIcon size={13} className="flex-shrink-0" /> {item.label}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        {new Date(item.date).toLocaleDateString()}
-                        {item.time && ` · ${formatTime(item.time)}`}
-                      </p>
+                  {selectedItems.grades.map(g => {
+                    // Fix: guard division by zero
+                    const pct = g.max_score > 0 ? ((g.score / g.max_score) * 100).toFixed(1) : '0.0'
+                    return (
+                      <div key={g.id} className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3 mb-2">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5"><BarChart3 size={13} /> {g.title}</p>
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{g.score}/{g.max_score} — {pct}%</p>
+                      </div>
+                    )
+                  })}
+
+                  {selectedItems.events.map(e => {
+                    const color = EVENT_COLORS[e.color] || EVENT_COLORS.indigo
+                    return (
+                      <div key={e.id} className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3 mb-2 group">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5"><Star size={13} /> {e.title}</p>
+                          {/* Fix: opens confirm modal instead of inline delete */}
+                          <button
+                            onClick={() => { setError(''); setConfirmDelete(e) }}
+                            className="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                          ><X size={14} /></button>
+                        </div>
+                        {e.time && <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1"><Clock size={11} /> {formatTime(e.time)}</p>}
+                        <p className={`text-xs mt-1 capitalize ${color.text}`}>{e.type}</p>
+                      </div>
+                    )
+                  })}
+                </>
+              ) : (
+                <>
+                  {todaysClasses.length > 0 && (
+                    <div className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
+                      <h3 className="text-gray-900 dark:text-white font-semibold mb-3 flex items-center gap-1.5">
+                        <GraduationCap size={15} /> Today's Classes
+                      </h3>
+                      {todaysClasses.map(({ subject, block }, idx) => (
+                        <div key={`${subject.id}-${idx}`} className={`border rounded-lg p-3 mb-2 last:mb-0 ${subject.color.light} ${subject.color.border}`}>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{subject.name}</p>
+                          {(block.startTime || block.endTime) && (
+                            <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 flex items-center gap-1">
+                              <Clock size={11} /> {formatTime(block.startTime)}{block.endTime && ` – ${formatTime(block.endTime)}`}
+                            </p>
+                          )}
+                          {block.room && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
+                              <MapPin size={11} /> {block.room}
+                            </p>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  )
-                })}
-              </>
-            )}
+                  )}
+
+                  <h3 className="text-gray-900 dark:text-white font-semibold mb-3">Upcoming</h3>
+                  {upcomingItems.length === 0 && (
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">Nothing upcoming.</p>
+                  )}
+                  {upcomingItems.map((item, i) => {
+                    const ItemIcon = item.type === 'assignment' ? FileText : item.type === 'reminder' ? Bell : Star
+                    return (
+                      <div key={i} className="mb-2 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3">
+                        <p className="text-sm text-gray-900 dark:text-white font-medium flex items-center gap-1.5">
+                          <ItemIcon size={13} className="flex-shrink-0" /> {item.label}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          {new Date(item.date).toLocaleDateString()}
+                          {item.time && ` · ${formatTime(item.time)}`}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Add Event Modal */}
-      {showModal && (
-        // Fix: backdrop click closes modal
-        <div
-          className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={(e) => e.target === e.currentTarget && setShowModal(false)}
-        >
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
-            <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Add Event</h3>
+        {/* Add Event Modal */}
+        {showModal && (
+          // Fix: backdrop click closes modal
+          <div
+            className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={(e) => e.target === e.currentTarget && setShowModal(false)}
+          >
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
+              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Add Event</h3>
 
-            <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Title</label>
-              <input
-                autoFocus
-                value={form.title}
-                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                onKeyDown={e => e.key === 'Enter' && handleAddEvent()}
-                placeholder="e.g. Final Exam"
-                className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Date</label>
+                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Title</label>
                 <input
-                  type="date"
-                  value={form.date}
-                  onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                  className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
+                  autoFocus
+                  value={form.title}
+                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                  onKeyDown={e => e.key === 'Enter' && handleAddEvent()}
+                  placeholder="e.g. Final Exam"
+                  className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
                 />
               </div>
-              <div>
-                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Time (optional)</label>
-                <input
-                  type="time"
-                  value={form.time}
-                  onChange={e => setForm(f => ({ ...f, time: e.target.value }))}
-                  className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
-                />
-              </div>
-            </div>
 
-            <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Type</label>
-              <select
-                value={form.type}
-                onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-                className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
-              >
-                {EVENT_TYPES.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">Color</label>
-              <div className="flex gap-2">
-                {Object.entries(EVENT_COLORS).map(([key, val]) => (
-                  <button
-                    key={key}
-                    onClick={() => setForm(f => ({ ...f, color: key }))}
-                    className={`w-7 h-7 rounded-full ${val.bg} ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-800 transition
-                      ${form.color === key ? 'ring-gray-900 dark:ring-white scale-110' : 'ring-transparent hover:ring-gray-300 dark:hover:ring-gray-600'}`}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={form.date}
+                    onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                    className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
                   />
-                ))}
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Time (optional)</label>
+                  <input
+                    type="time"
+                    value={form.time}
+                    onChange={e => setForm(f => ({ ...f, time: e.target.value }))}
+                    className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Type</label>
+                <select
+                  value={form.type}
+                  onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+                  className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
+                >
+                  {EVENT_TYPES.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">Color</label>
+                <div className="flex gap-2">
+                  {Object.entries(EVENT_COLORS).map(([key, val]) => (
+                    <button
+                      key={key}
+                      onClick={() => setForm(f => ({ ...f, color: key }))}
+                      className={`w-7 h-7 rounded-full ${val.bg} ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-800 transition
+                        ${form.color === key ? 'ring-gray-900 dark:ring-white scale-110' : 'ring-transparent hover:ring-gray-300 dark:hover:ring-gray-600'}`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {error && <p className="text-red-600 dark:text-red-400 text-xs">{error}</p>}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setShowModal(false)}
+                  disabled={saving}
+                  className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                {/* Fix: saving state, disabled while in-flight */}
+                <button
+                  onClick={handleAddEvent}
+                  disabled={!form.title.trim() || !form.date || saving}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg py-2 text-sm shadow-sm transition-colors"
+                >
+                  {saving ? 'Saving…' : 'Add Event'}
+                </button>
               </div>
             </div>
-
-            {error && <p className="text-red-600 dark:text-red-400 text-xs">{error}</p>}
-
-            <div className="flex gap-3 pt-1">
-              <button
-                onClick={() => setShowModal(false)}
-                disabled={saving}
-                className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-40"
-              >
-                Cancel
-              </button>
-              {/* Fix: saving state, disabled while in-flight */}
-              <button
-                onClick={handleAddEvent}
-                disabled={!form.title.trim() || !form.date || saving}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg py-2 text-sm shadow-sm transition-colors"
-              >
-                {saving ? 'Saving…' : 'Add Event'}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Confirm Delete Modal */}
-      {confirmDelete && (
-        <div
-          className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}
-        >
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-xl">
-            <div className="text-center">
-              <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center justify-center mx-auto mb-3">
-                <Trash2 size={20} className="text-red-500 dark:text-red-400" />
+        {/* Confirm Delete Modal */}
+        {confirmDelete && (
+          <div
+            className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}
+          >
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-xl">
+              <div className="text-center">
+                <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center justify-center mx-auto mb-3">
+                  <Trash2 size={20} className="text-red-500 dark:text-red-400" />
+                </div>
+                <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Delete Event?</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+                  Are you sure you want to delete{' '}
+                  <span className="text-gray-900 dark:text-white font-medium">"{confirmDelete.title}"</span>? This cannot be undone.
+                </p>
+                {error && <p className="text-red-600 dark:text-red-400 text-xs mt-2">{error}</p>}
               </div>
-              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Delete Event?</h3>
-              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                Are you sure you want to delete{' '}
-                <span className="text-gray-900 dark:text-white font-medium">"{confirmDelete.title}"</span>? This cannot be undone.
-              </p>
-              {error && <p className="text-red-600 dark:text-red-400 text-xs mt-2">{error}</p>}
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmDelete(null)}
-                disabled={deleting}
-                className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-40"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteEvent}
-                disabled={deleting}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg py-2 text-sm transition-colors disabled:opacity-40"
-              >
-                {deleting ? 'Deleting…' : 'Yes, Delete'}
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmDelete(null)}
+                  disabled={deleting}
+                  className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteEvent}
+                  disabled={deleting}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg py-2 text-sm transition-colors disabled:opacity-40"
+                >
+                  {deleting ? 'Deleting…' : 'Yes, Delete'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-    </div>
+      </div>
+    </>
   )
 }

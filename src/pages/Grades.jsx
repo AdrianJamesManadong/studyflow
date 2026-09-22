@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useGrades } from '../hooks/useGrades'
 import { useSubjects } from '../hooks/useSubjects'
 import { GradesSkeleton } from '../components/Skeleton'
 import { BarChart3, Trash2 } from 'lucide-react'
 
-// Fix: outside component — never recreated on render
 const TYPES = ['quiz', 'exam', 'project', 'homework', 'lab', 'other']
 
 const EMPTY_FORM = { title: '', subjectId: '', score: '', maxScore: '100', type: 'quiz' }
+
+// Extra credit: scores above the max are allowed. Flip this to false to go
+// back to a hard reject — the >100% display handling below covers both cases.
+const ALLOW_EXTRA_CREDIT = true
 
 function scoreColor(pct) {
   if (pct >= 90) return 'text-emerald-600 dark:text-emerald-400'
@@ -21,6 +24,72 @@ function scoreBorder(pct) {
   return 'border-red-400 dark:border-red-600'
 }
 
+// Whole-number display for the small badge circle so 3-digit / decimal
+// percentages (e.g. "100.0%") never overflow it. The exact score/maxScore
+// is still shown as text next to the title.
+function formatBadgePct(pct) {
+  return `${Math.round(pct)}%`
+}
+
+// Averages come back as strings (or null). "0.0" is a real value, so test for
+// presence rather than truthiness — otherwise a genuine 0% renders as "—".
+function hasValue(v) {
+  return v !== null && v !== undefined && v !== ''
+}
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+// Escape to close, focus trapped inside, background scroll locked, focus
+// restored to whatever opened the modal. `busy` blocks closing mid-request.
+function useModalA11y(active, onClose, busy) {
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!active) return
+
+    const node = ref.current
+    const previouslyFocused = document.activeElement
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const handler = (e) => {
+      if (e.key === 'Escape') {
+        if (busy) return
+        e.stopPropagation()
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab' || !node) return
+
+      const focusables = Array.from(node.querySelectorAll(FOCUSABLE))
+      if (focusables.length === 0) return
+
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handler, true)
+    return () => {
+      document.removeEventListener('keydown', handler, true)
+      document.body.style.overflow = previousOverflow
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+        previouslyFocused.focus()
+      }
+    }
+  }, [active, onClose, busy])
+
+  return ref
+}
+
 export default function Grades() {
   const {
     grades, addGrade, editGrade, deleteGrade,
@@ -29,25 +98,20 @@ export default function Grades() {
   } = useGrades()
   const { subjects, loading: subjectsLoading } = useSubjects()
 
-  const [showModal, setShowModal]         = useState(false)
-  const [editing, setEditing]             = useState(null)
+  const [showModal, setShowModal]             = useState(false)
+  const [editing, setEditing]                 = useState(null)
   const [selectedSubject, setSelectedSubject] = useState('all')
-  const [form, setForm]                   = useState(EMPTY_FORM)
-  const [saving, setSaving]               = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(null)
-  const [deleting, setDeleting]           = useState(false)
-  const [error, setError]                 = useState('')
+  const [form, setForm]                       = useState(EMPTY_FORM)
+  const [saving, setSaving]                   = useState(false)
+  const [confirmDelete, setConfirmDelete]     = useState(null)
+  const [deleting, setDeleting]               = useState(false)
+  const [error, setError]                     = useState('')
 
-  // Fix: Escape closes modals — consistent with other pages
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key !== 'Escape') return
-      setShowModal(false)
-      setConfirmDelete(null)
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [])
+  const closeForm    = useCallback(() => setShowModal(false), [])
+  const closeConfirm = useCallback(() => setConfirmDelete(null), [])
+
+  const formRef    = useModalA11y(showModal, closeForm, saving)
+  const confirmRef = useModalA11y(Boolean(confirmDelete), closeConfirm, deleting)
 
   function openAdd() {
     setEditing(null)
@@ -69,7 +133,6 @@ export default function Grades() {
     setShowModal(true)
   }
 
-  // Fix: validate score range, async, awaited, saving state, error handling
   async function handleSave() {
     const title    = form.title.trim()
     const score    = parseFloat(form.score)
@@ -77,18 +140,22 @@ export default function Grades() {
 
     if (!title || form.score === '') return
 
-    // Fix: guard division by zero and negative max
-    if (isNaN(maxScore) || maxScore <= 0) {
-      setError('"Out of" must be greater than 0.')
+    // A number input can hold partial values like "-" or "1e", which parse to
+    // NaN and slip past the range checks below — catch them first.
+    if (Number.isNaN(score)) {
+      setError('Score must be a number.')
       return
     }
-    // Fix: score cannot exceed maxScore
-    if (score > maxScore) {
-      setError(`Score (${score}) cannot be greater than max score (${maxScore}).`)
+    if (Number.isNaN(maxScore) || maxScore <= 0) {
+      setError('"Out of" must be greater than 0.')
       return
     }
     if (score < 0) {
       setError('Score cannot be negative.')
+      return
+    }
+    if (!ALLOW_EXTRA_CREDIT && score > maxScore) {
+      setError(`Score (${score}) cannot be greater than max score (${maxScore}).`)
       return
     }
 
@@ -109,7 +176,6 @@ export default function Grades() {
     }
   }
 
-  // Fix: async, awaited, deleting state, error handling
   async function handleDelete() {
     setDeleting(true)
     setError('')
@@ -123,13 +189,21 @@ export default function Grades() {
     }
   }
 
+  // Enter saves from any field in the form, not just the title.
+  function handleFormKeyDown(e) {
+    if (e.key !== 'Enter') return
+    if (e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return
+    e.preventDefault()
+    if (!form.title.trim() || form.score === '' || saving) return
+    handleSave()
+  }
+
   const overall = getOverallAverage()
 
   const filtered = grades
     .filter(g => selectedSubject === 'all' || g.subject_id === selectedSubject)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
-  // Fix: actually use the imported skeleton while loading
   if (gradesLoading || subjectsLoading) return <GradesSkeleton />
 
   return (
@@ -151,14 +225,14 @@ export default function Grades() {
         </button>
       </div>
 
-      {/* Overall average card */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-5 sm:col-span-1 shadow-sm">
+      {/* Overall + per-subject average cards */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-5 shadow-sm">
           <p className="text-gray-500 dark:text-gray-400 text-sm">Overall Average</p>
-          <p className={`text-4xl font-bold mt-1 ${overall ? scoreColor(parseFloat(overall)) : 'text-gray-300 dark:text-gray-600'}`}>
-            {overall ? `${overall}%` : '—'}
+          <p className={`text-4xl font-bold mt-1 ${hasValue(overall) ? scoreColor(parseFloat(overall)) : 'text-gray-300 dark:text-gray-600'}`}>
+            {hasValue(overall) ? `${overall}%` : '—'}
           </p>
-          {overall && (
+          {hasValue(overall) && (
             <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{getLetterGrade(parseFloat(overall))}</p>
           )}
         </div>
@@ -168,10 +242,10 @@ export default function Grades() {
           return (
             <div key={s.id} className={`rounded-xl p-5 border dark:bg-gray-800 shadow-sm ${s.color.light} ${s.color.border}`}>
               <p className={`text-sm ${s.color.text} truncate`}>{s.name}</p>
-              <p className={`text-3xl font-bold mt-1 ${avg ? scoreColor(parseFloat(avg)) : 'text-gray-300 dark:text-gray-600'}`}>
-                {avg ? `${avg}%` : '—'}
+              <p className={`text-3xl font-bold mt-1 ${hasValue(avg) ? scoreColor(parseFloat(avg)) : 'text-gray-300 dark:text-gray-600'}`}>
+                {hasValue(avg) ? `${avg}%` : '—'}
               </p>
-              {avg && (
+              {hasValue(avg) && (
                 <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{getLetterGrade(parseFloat(avg))}</p>
               )}
             </div>
@@ -213,13 +287,14 @@ export default function Grades() {
       <div className="space-y-3">
         {filtered.map(g => {
           const subject = subjects.find(s => s.id === g.subject_id)
-          // Fix: guard against maxScore = 0 just in case bad data exists in DB
           const pct = g.max_score > 0 ? ((g.score / g.max_score) * 100).toFixed(1) : '0.0'
           const pctFloat = parseFloat(pct)
           return (
             <div key={g.id} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-4 flex items-center gap-4 shadow-sm">
               <div className={`w-14 h-14 rounded-full flex flex-col items-center justify-center flex-shrink-0 border-2 ${scoreBorder(pctFloat)}`}>
-                <span className={`text-sm font-bold ${scoreColor(pctFloat)}`}>{pct}%</span>
+                <span className={`font-bold ${scoreColor(pctFloat)} ${pctFloat >= 100 ? 'text-xs' : 'text-sm'}`}>
+                  {formatBadgePct(pctFloat)}
+                </span>
               </div>
 
               <div className="flex-1 min-w-0">
@@ -234,6 +309,9 @@ export default function Grades() {
                     {g.type}
                   </span>
                   <span className="text-xs text-gray-400 dark:text-gray-500">{g.score} / {g.max_score}</span>
+                  {g.score > g.max_score && (
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400">Extra credit</span>
+                  )}
                 </div>
               </div>
 
@@ -248,7 +326,6 @@ export default function Grades() {
                 >
                   Edit
                 </button>
-                {/* Fix: now opens confirm modal instead of deleting inline */}
                 <button
                   onClick={() => { setError(''); setConfirmDelete(g) }}
                   className="text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 text-xs transition"
@@ -263,31 +340,41 @@ export default function Grades() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        // Fix: backdrop click closes modal
         <div
           className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={(e) => e.target === e.currentTarget && setShowModal(false)}
+          onClick={(e) => {
+            if (saving) return
+            if (e.target === e.currentTarget) setShowModal(false)
+          }}
         >
-          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
-            <h3 className="text-gray-900 dark:text-white font-semibold text-lg">
+          <div
+            ref={formRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="grade-modal-title"
+            onKeyDown={handleFormKeyDown}
+            className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl"
+          >
+            <h3 id="grade-modal-title" className="text-gray-900 dark:text-white font-semibold text-lg">
               {editing ? 'Edit Grade' : 'Log Grade'}
             </h3>
 
             <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Title</label>
+              <label htmlFor="grade-title" className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Title</label>
               <input
+                id="grade-title"
                 autoFocus
                 value={form.title}
                 onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                onKeyDown={e => e.key === 'Enter' && handleSave()}
                 placeholder="e.g. Midterm Exam"
                 className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 transition"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Subject</label>
+              <label htmlFor="grade-subject" className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Subject</label>
               <select
+                id="grade-subject"
                 value={form.subjectId}
                 onChange={e => setForm(f => ({ ...f, subjectId: e.target.value }))}
                 className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-400 transition"
@@ -299,10 +386,12 @@ export default function Grades() {
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Score</label>
+                <label htmlFor="grade-score" className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Score</label>
                 <input
+                  id="grade-score"
                   type="number"
                   min="0"
+                  step="any"
                   value={form.score}
                   onChange={e => { setForm(f => ({ ...f, score: e.target.value })); setError('') }}
                   placeholder="85"
@@ -310,10 +399,12 @@ export default function Grades() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Out of</label>
+                <label htmlFor="grade-max" className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Out of</label>
                 <input
+                  id="grade-max"
                   type="number"
                   min="1"
+                  step="any"
                   value={form.maxScore}
                   onChange={e => { setForm(f => ({ ...f, maxScore: e.target.value })); setError('') }}
                   placeholder="100"
@@ -321,19 +412,20 @@ export default function Grades() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Type</label>
+                <label htmlFor="grade-type" className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Type</label>
                 <select
+                  id="grade-type"
                   value={form.type}
                   onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-400 transition"
+                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-400 transition capitalize"
                 >
                   {TYPES.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
                 </select>
               </div>
             </div>
 
-            {/* Fix: inline score preview so user sees result before saving */}
-            {form.score !== '' && parseFloat(form.maxScore) > 0 && (
+            {/* Inline score preview so the result is visible before saving */}
+            {form.score !== '' && !Number.isNaN(parseFloat(form.score)) && parseFloat(form.maxScore) > 0 && (
               <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg px-4 py-2">
                 <span className="text-gray-500 dark:text-gray-400 text-xs">Preview:</span>
                 {(() => {
@@ -350,7 +442,7 @@ export default function Grades() {
               </div>
             )}
 
-            {error && <p className="text-red-600 dark:text-red-400 text-xs">{error}</p>}
+            {error && <p role="alert" className="text-red-600 dark:text-red-400 text-xs">{error}</p>}
 
             <div className="flex gap-3 pt-1">
               <button
@@ -374,22 +466,30 @@ export default function Grades() {
 
       {/* Confirm Delete Modal */}
       {confirmDelete && (
-        // Fix: backdrop click closes modal
         <div
           className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}
+          onClick={(e) => {
+            if (deleting) return
+            if (e.target === e.currentTarget) setConfirmDelete(null)
+          }}
         >
-          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-xl">
+          <div
+            ref={confirmRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-modal-title"
+            className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-xl"
+          >
             <div className="text-center">
               <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-800 flex items-center justify-center mx-auto mb-3">
                 <Trash2 size={22} className="text-red-500 dark:text-red-400" />
               </div>
-              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Delete Grade?</h3>
+              <h3 id="delete-modal-title" className="text-gray-900 dark:text-white font-semibold text-lg">Delete Grade?</h3>
               <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
                 Are you sure you want to delete{' '}
                 <span className="text-gray-900 dark:text-white font-medium">"{confirmDelete.title}"</span>? This cannot be undone.
               </p>
-              {error && <p className="text-red-600 dark:text-red-400 text-xs mt-2">{error}</p>}
+              {error && <p role="alert" className="text-red-600 dark:text-red-400 text-xs mt-2">{error}</p>}
             </div>
             <div className="flex gap-3">
               <button
@@ -400,6 +500,7 @@ export default function Grades() {
                 Cancel
               </button>
               <button
+                autoFocus
                 onClick={handleDelete}
                 disabled={deleting}
                 className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-2 text-sm transition disabled:opacity-40"

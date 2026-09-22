@@ -34,6 +34,8 @@ export default function Sidebar() {
     if (typeof window === 'undefined') return false
     return localStorage.getItem(COLLAPSE_KEY) === 'true'
   })
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
 
   useEffect(() => {
     localStorage.setItem(COLLAPSE_KEY, collapsed)
@@ -55,14 +57,29 @@ export default function Sidebar() {
     ...(user?.email === ADMIN_EMAIL ? [{ label: 'Admin', Icon: Shield, path: '/dashboard/admin' }] : []),
   ]
 
-  function handleLogout() {
-    logout()
+  async function handleConfirmLogout() {
+    setSigningOut(true)
+    await logout()
     navigate('/login')
   }
 
   function handleNav() {
     setOpen(false)
   }
+
+  const AvatarCircle = ({ size = 'w-8 h-8', textSize = 'text-sm' }) =>
+    user?.avatarUrl ? (
+      <img
+        src={user.avatarUrl}
+        alt=""
+        className={`${size} rounded-full flex-shrink-0 object-cover`}
+        referrerPolicy="no-referrer"
+      />
+    ) : (
+      <div className={`${size} rounded-full bg-indigo-600 flex items-center justify-center text-white ${textSize} font-bold flex-shrink-0`}>
+        {user?.name?.[0]?.toUpperCase()}
+      </div>
+    )
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -123,9 +140,7 @@ export default function Sidebar() {
       {/* User / Logout */}
       <div className="px-3 py-4 border-t border-gray-100 dark:border-gray-800">
         <div className={`flex items-center gap-3 px-3 py-2 mb-1 ${collapsed ? 'justify-center' : ''}`}>
-          <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-            {user?.name?.[0]?.toUpperCase()}
-          </div>
+          <AvatarCircle />
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm text-gray-900 dark:text-white font-medium truncate">{user?.name}</p>
@@ -134,7 +149,7 @@ export default function Sidebar() {
           )}
         </div>
         <button
-          onClick={handleLogout}
+          onClick={() => setShowSignOutConfirm(true)}
           title={collapsed ? 'Sign out' : undefined}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 dark:hover:text-red-400 transition-colors
             ${collapsed ? 'justify-center' : 'text-left'}`}
@@ -185,6 +200,49 @@ export default function Sidebar() {
           {collapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronLeft size={14} aria-hidden="true" />}
         </button>
       </aside>
+
+      {/* Sign out confirmation modal */}
+      {showSignOutConfirm && (
+        <div
+          onClick={e => { if (e.target === e.currentTarget && !signingOut) setShowSignOutConfirm(false) }}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+        >
+          <div className="w-full max-w-sm bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-xl overflow-hidden">
+            <div className="p-6">
+              <div className="w-11 h-11 rounded-full bg-red-50 dark:bg-red-950 flex items-center justify-center mb-4">
+                <LogOut size={20} className="text-red-500" aria-hidden="true" />
+              </div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">Sign out?</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                You'll need to sign in again to access your dashboard.
+              </p>
+            </div>
+            <div className="flex gap-3 px-6 pb-6">
+              <button
+                onClick={() => setShowSignOutConfirm(false)}
+                disabled={signingOut}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmLogout}
+                disabled={signingOut}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {signingOut ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Signing out…
+                  </>
+                ) : (
+                  'Sign out'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

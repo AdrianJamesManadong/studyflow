@@ -68,6 +68,24 @@ const QUICK_ACTIONS = [
 const ANNOUNCEMENT_VISIBLE_DAYS = 2
 const ANNOUNCEMENT_VISIBLE_MS = ANNOUNCEMENT_VISIBLE_DAYS * 24 * 60 * 60 * 1000
 
+// Fallback swatch used when a subject's stored `color` isn't the expected
+// { name, bg, light, border, text } object (e.g. legacy/malformed rows).
+const DEFAULT_SUBJECT_COLOR = { name: 'indigo', bg: 'bg-indigo-500', light: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400' }
+
+// Maps many ways a day-of-week might be stored in `schedules[].days` to a
+// 0–6 (Sun–Sat) index matching Date#getDay(). Covers short/long names,
+// case-insensitive. If your data stores numeric indices already, those
+// pass straight through.
+const DAY_ALIASES = {
+  sun: 0, sunday: 0,
+  mon: 1, monday: 1,
+  tue: 2, tues: 2, tuesday: 2,
+  wed: 3, weds: 3, wednesday: 3,
+  thu: 4, thur: 4, thurs: 4, thursday: 4,
+  fri: 5, friday: 5,
+  sat: 6, saturday: 6,
+}
+
 /* ─── pure helpers (outside component) ─── */
 function getGreeting() {
   const h = new Date().getHours()
@@ -89,6 +107,34 @@ function getTodayStart() {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
   return d
+}
+
+// Normalizes a single `days` entry (from a subject's schedule block) to a
+// 0–6 Sun–Sat index, or null if it can't be recognized.
+function normalizeDayToIndex(day) {
+  if (typeof day === 'number' && day >= 0 && day <= 6) return day
+  if (!day) return null
+  const key = String(day).trim().toLowerCase()
+  return DAY_ALIASES[key] ?? null
+}
+
+// Normalizes a subject's stored color into the { bg, text, border, light }
+// shape the dashboard needs, falling back to indigo if it's missing/malformed.
+function normalizeSubjectColor(color) {
+  if (color && typeof color === 'object' && color.bg) return color
+  return DEFAULT_SUBJECT_COLOR
+}
+
+// "13:05" -> "1:05 PM". Returns '' for missing/unparseable input.
+function formatClockTime(t) {
+  if (!t) return ''
+  const [hStr, mStr] = String(t).split(':')
+  const h = Number(hStr)
+  const m = Number(mStr)
+  if (Number.isNaN(h) || Number.isNaN(m)) return ''
+  const period = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${String(m).padStart(2, '0')} ${period}`
 }
 
 export default function DashboardHome() {
@@ -212,6 +258,48 @@ export default function DashboardHome() {
       .slice(0, 5),
     [reminders, todayStartMs]
   )
+
+  // Today's classes: flattens every subject's `schedules[]` blocks down to
+  // just the ones that run today (by day-of-week), sorted by start time, with
+  // an ongoing/upcoming/done status derived from the current clock time.
+  const todaysClasses = useMemo(() => {
+    const now = new Date()
+    const todayIdx = now.getDay()
+    const nowMinutes = now.getHours() * 60 + now.getMinutes()
+
+    const items = []
+    subjects.forEach(subj => {
+      const schedules = Array.isArray(subj.schedules) ? subj.schedules : []
+      schedules.forEach((sch, idx) => {
+        const days = Array.isArray(sch.days) ? sch.days : []
+        const runsToday = days.some(d => normalizeDayToIndex(d) === todayIdx)
+        if (!runsToday) return
+
+        const [sh, sm] = String(sch.startTime || '0:0').split(':').map(Number)
+        const [eh, em] = String(sch.endTime || '0:0').split(':').map(Number)
+        const startMin = (Number.isNaN(sh) ? 0 : sh) * 60 + (Number.isNaN(sm) ? 0 : sm)
+        const endMin = (Number.isNaN(eh) ? 0 : eh) * 60 + (Number.isNaN(em) ? 0 : em)
+
+        let status = 'upcoming'
+        if (endMin > startMin && nowMinutes >= startMin && nowMinutes < endMin) status = 'ongoing'
+        else if (nowMinutes >= endMin && endMin > 0) status = 'done'
+
+        items.push({
+          key: `${subj.id}-${idx}`,
+          subjectName: subj.name,
+          professor: subj.professor,
+          room: sch.room,
+          startTime: sch.startTime,
+          endTime: sch.endTime,
+          startMin,
+          status,
+          color: normalizeSubjectColor(subj.color),
+        })
+      })
+    })
+
+    return items.sort((a, b) => a.startMin - b.startMin)
+  }, [subjects])
 
   // FIX #1: `grades` is now in the dependency array. getOverallAverage() itself
   // is still called inside the memo rather than being a dep (its reference may
@@ -516,8 +604,83 @@ export default function DashboardHome() {
           </div>
         </div>
 
+        {/* ── Today's Classes ── */}
+        <div style={fadeUp(480)}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
+              Today's Classes
+            </h3>
+            {todaysClasses.length > 0 && (
+              <button
+                onClick={() => navigate('/dashboard/subjects')}
+                className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors flex items-center gap-1 group"
+              >
+                View all
+                <ArrowRight aria-hidden="true" size={14} className="transition-transform duration-200 group-hover:translate-x-0.5" />
+              </button>
+            )}
+          </div>
+
+          {todaysClasses.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-10 text-center shadow-sm">
+              <BookOpen
+                aria-hidden="true"
+                size={36}
+                className="mb-3 block mx-auto text-indigo-600 dark:text-indigo-400"
+                style={{ animation: 'float 3s ease-in-out infinite' }}
+              />
+              <p className="text-gray-900 dark:text-white font-semibold">No classes today</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Nothing on your schedule — enjoy the day off!</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {todaysClasses.map((c, i) => (
+                <div
+                  key={c.key}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate('/dashboard/subjects')}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      navigate('/dashboard/subjects')
+                    }
+                  }}
+                  className="row-item bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-indigo-200 dark:hover:border-indigo-800 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/30 rounded-2xl px-5 py-3.5 flex items-center justify-between cursor-pointer shadow-sm group"
+                  style={fadeUp(480 + i * 40)}
+                >
+                  <div className="flex items-center gap-3.5">
+                    <span
+                      aria-hidden="true"
+                      className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${c.color.bg}`}
+                      style={c.status === 'ongoing' ? { animation: 'pulse-dot 1.5s ease-in-out infinite' } : undefined}
+                    />
+                    <div>
+                      <p className="text-sm text-gray-900 dark:text-white font-medium group-hover:text-indigo-700 dark:group-hover:text-indigo-400 transition-colors">
+                        {c.subjectName}
+                      </p>
+                      <p className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">
+                        {formatClockTime(c.startTime)}
+                        {c.endTime && <> – {formatClockTime(c.endTime)}</>}
+                        {c.room && <span> · {c.room}</span>}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full border
+                    ${c.status === 'ongoing' ? 'bg-emerald-50 border-emerald-200 text-emerald-600 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400' :
+                      c.status === 'done' ? 'bg-gray-50 border-gray-200 text-gray-400 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-500' :
+                      'bg-amber-50 border-amber-200 text-amber-600 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-400'}`}>
+                    {c.status === 'ongoing' ? 'Ongoing' : c.status === 'done' ? 'Done' : 'Upcoming'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* ── Upcoming Assignments ── */}
-        <div style={fadeUp(520)}>
+        <div style={fadeUp(560)}>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
               Upcoming Assignments
@@ -572,7 +735,7 @@ export default function DashboardHome() {
                       }
                     }}
                     className="row-item bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-indigo-200 dark:hover:border-indigo-800 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/30 rounded-2xl px-5 py-3.5 flex items-center justify-between cursor-pointer shadow-sm group"
-                    style={fadeUp(520 + i * 40)}
+                    style={fadeUp(560 + i * 40)}
                   >
                     <div className="flex items-center gap-3.5">
                       {/* Quick-complete — only renders if useAssignments exposes markDone */}
@@ -629,7 +792,7 @@ export default function DashboardHome() {
         </div>
 
         {/* ── Upcoming Reminders ── */}
-        <div style={fadeUp(600)}>
+        <div style={fadeUp(640)}>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
               Upcoming Reminders
@@ -680,7 +843,7 @@ export default function DashboardHome() {
                       }
                     }}
                     className="row-item bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-rose-200 dark:hover:border-rose-800 hover:bg-rose-50/40 dark:hover:bg-rose-950/30 rounded-2xl px-5 py-3.5 flex items-center justify-between cursor-pointer shadow-sm group"
-                    style={fadeUp(600 + i * 40)}
+                    style={fadeUp(640 + i * 40)}
                   >
                     <div className="flex items-center gap-3.5">
                       <button
