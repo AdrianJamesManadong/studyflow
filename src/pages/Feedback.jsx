@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useFeedback } from '../hooks/useFeedback'
 import {
@@ -27,9 +27,16 @@ const CATEGORIES = [
 ]
 
 const MAX_LEN = 500
+const MAX_COMMENT_LEN = 300
 
 function categoryMeta(id) {
   return CATEGORIES.find(c => c.id === id) || CATEGORIES[0]
+}
+
+// Works whether AuthContext exposes `name` directly or only via Supabase's
+// user_metadata (the Dashboard reads it from there).
+function getDisplayName(user) {
+  return (user?.name || user?.user_metadata?.name || '').trim()
 }
 
 function timeAgo(iso) {
@@ -51,8 +58,11 @@ function timeAgo(iso) {
 function Avatar({ name, isAnonymous, size = 'md' }) {
   const dims = size === 'sm' ? 'w-6 h-6 text-[10px]' : size === 'lg' ? 'w-10 h-10 text-sm' : 'w-8 h-8 text-xs'
   return (
-    <div className={`rounded-full flex items-center justify-center font-bold flex-shrink-0 ${dims}
-      ${isAnonymous ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white'}`}>
+    <div
+      aria-hidden="true"
+      className={`rounded-full flex items-center justify-center font-bold flex-shrink-0 ${dims}
+      ${isAnonymous ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white'}`}
+    >
       {isAnonymous ? '?' : (name || 'U')[0]?.toUpperCase()}
     </div>
   )
@@ -65,6 +75,8 @@ export default function Feedback() {
     addPost, deletePost, toggleLike,
     fetchComments, addComment, deleteComment,
   } = useFeedback()
+
+  const myName = getDisplayName(user)
 
   const [content, setContent]         = useState('')
   const [category, setCategory]       = useState('general')
@@ -80,31 +92,43 @@ export default function Feedback() {
   const [commentErrors, setCommentErrors]   = useState({})
   const [confirmDeletePost, setConfirmDeletePost] = useState(null)
   const [deletingPost, setDeletingPost]     = useState(false)
+  const [deleteError, setDeleteError]       = useState('')
   const [openMenuId, setOpenMenuId]         = useState(null)
 
   const commentInputRef = useRef(null)
 
+  // Escape closes the delete-confirm modal
   useEffect(() => {
     if (!confirmDeletePost) return
-    const onKey = (e) => { if (e.key === 'Escape' && !deletingPost) setConfirmDeletePost(null) }
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !deletingPost) {
+        setConfirmDeletePost(null)
+        setDeleteError('')
+      }
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [confirmDeletePost, deletingPost])
 
-  // Close the "···" post menu on any outside click
+  // Close the "···" post menu on any outside click or Escape
   useEffect(() => {
     if (!openMenuId) return
     const onDocClick = () => setOpenMenuId(null)
+    const onKey = (e) => { if (e.key === 'Escape') setOpenMenuId(null) }
     document.addEventListener('click', onDocClick)
-    return () => document.removeEventListener('click', onDocClick)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('click', onDocClick)
+      window.removeEventListener('keydown', onKey)
+    }
   }, [openMenuId])
 
   async function handlePost() {
-    if (!content.trim()) return
+    if (!content.trim() || posting) return
     setPosting(true)
     setPostError('')
     try {
-      await addPost({ content: content.trim(), category, isAnonymous, authorName: user?.name })
+      await addPost({ content: content.trim(), category, isAnonymous, authorName: myName })
       setContent('')
       setCategory('general')
       setIsAnonymous(false)
@@ -117,9 +141,13 @@ export default function Feedback() {
 
   async function handleDeletePost() {
     setDeletingPost(true)
+    setDeleteError('')
     try {
       await deletePost(confirmDeletePost.id)
       setConfirmDeletePost(null)
+    } catch (err) {
+      // Previously a failure here left the modal open with no feedback at all.
+      setDeleteError(err.message || 'Failed to delete post. Please try again.')
     } finally {
       setDeletingPost(false)
     }
@@ -132,6 +160,8 @@ export default function Feedback() {
       setCommentsLoadingId(postId)
       try {
         await fetchComments(postId)
+      } catch (err) {
+        setCommentErrors(prev => ({ ...prev, [postId]: err.message || 'Failed to load comments.' }))
       } finally {
         setCommentsLoadingId(null)
       }
@@ -141,11 +171,11 @@ export default function Feedback() {
 
   async function handleAddComment(postId) {
     const text = (commentDrafts[postId] || '').trim()
-    if (!text) return
+    if (!text || commentPosting === postId) return
     setCommentPosting(postId)
     setCommentErrors(prev => ({ ...prev, [postId]: '' }))
     try {
-      await addComment(postId, { content: text, isAnonymous: false, authorName: user?.name })
+      await addComment(postId, { content: text, isAnonymous: false, authorName: myName })
       setCommentDrafts(prev => ({ ...prev, [postId]: '' }))
     } catch (err) {
       setCommentErrors(prev => ({ ...prev, [postId]: err.message || 'Failed to post comment.' }))
@@ -154,12 +184,24 @@ export default function Feedback() {
     }
   }
 
-  const filtered = filter === 'all' ? posts : posts.filter(p => p.category === filter)
+  async function handleDeleteComment(postId, commentId) {
+    setCommentErrors(prev => ({ ...prev, [postId]: '' }))
+    try {
+      await deleteComment(postId, commentId)
+    } catch (err) {
+      setCommentErrors(prev => ({ ...prev, [postId]: err.message || 'Failed to delete comment.' }))
+    }
+  }
+
+  const filtered = useMemo(
+    () => (filter === 'all' ? posts : posts.filter(p => p.category === filter)),
+    [posts, filter]
+  )
   const remaining = MAX_LEN - content.length
 
   if (loading) {
     return (
-      <div className="space-y-4 animate-pulse max-w-2xl mx-auto">
+      <div className="space-y-4 animate-pulse max-w-2xl mx-auto" aria-busy="true" aria-label="Loading feedback">
         <div className="h-28 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl" />
         {[1, 2, 3].map(i => <div key={i} className="h-32 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl" />)}
       </div>
@@ -175,6 +217,10 @@ export default function Feedback() {
         }
         .f-post { transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s ease, border-color .2s; }
         .f-post:hover { transform: translateY(-2px); }
+        @media (prefers-reduced-motion: reduce) {
+          .f-post { transition: none; }
+          .f-post:hover { transform: none; }
+        }
       `}</style>
 
       <div className="space-y-4 max-w-2xl mx-auto">
@@ -189,18 +235,26 @@ export default function Feedback() {
         {/* Composer */}
         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 space-y-3 shadow-sm" style={fadeUp(60)}>
           <div className="flex items-start gap-2.5">
-            <Avatar name={user?.name} isAnonymous={false} />
+            <Avatar name={myName} isAnonymous={false} />
             <textarea
               value={content}
               onChange={e => setContent(e.target.value.slice(0, MAX_LEN))}
-              placeholder={`What's on your mind${user?.name ? `, ${user.name.split(' ')[0]}` : ''}?`}
+              onKeyDown={e => {
+                // Ctrl/Cmd + Enter posts
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault()
+                  handlePost()
+                }
+              }}
+              placeholder={`What's on your mind${myName ? `, ${myName.split(' ')[0]}` : ''}?`}
               rows={2}
               aria-label="Write feedback"
               className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition resize-none text-sm"
             />
           </div>
-          <div className="flex justify-end">
-            <span className={`text-[10px] ${remaining <= 20 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}>
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] text-gray-400 dark:text-gray-500 hidden sm:inline">Ctrl/⌘ + Enter to post</span>
+            <span className={`text-[10px] ml-auto ${remaining <= 20 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}>
               {remaining} left
             </span>
           </div>
@@ -217,7 +271,7 @@ export default function Feedback() {
                   className={`text-xs px-3 py-1.5 rounded-full border capitalize transition-colors flex items-center gap-1.5
                     ${category === c.id ? c.style : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
                 >
-                  <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                  <span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
                   {c.label}
                 </button>
               ))}
@@ -236,19 +290,20 @@ export default function Feedback() {
             <button
               onClick={handlePost}
               disabled={!content.trim() || posting}
-              className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2 rounded-lg shadow-sm transition-colors hover:-translate-y-0.5"
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2 rounded-lg shadow-sm transition-all hover:-translate-y-0.5 disabled:hover:translate-y-0"
             >
               {posting ? 'Posting…' : 'Post'}
             </button>
           </div>
 
-          {postError && <p className="text-red-600 dark:text-red-400 text-xs">{postError}</p>}
+          {postError && <p role="alert" className="text-red-600 dark:text-red-400 text-xs">{postError}</p>}
         </div>
 
         {/* Filters */}
         <div className="flex gap-2 flex-wrap px-1" style={fadeUp(100)}>
           <button
             onClick={() => setFilter('all')}
+            aria-pressed={filter === 'all'}
             className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors
               ${filter === 'all' ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
           >
@@ -258,6 +313,7 @@ export default function Feedback() {
             <button
               key={c.id}
               onClick={() => setFilter(c.id)}
+              aria-pressed={filter === c.id}
               className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors capitalize
                 ${filter === c.id ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
             >
@@ -267,18 +323,34 @@ export default function Feedback() {
         </div>
 
         {error && (
-          <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2.5 text-xs text-red-600 dark:text-red-400 flex items-center gap-1.5">
-            <AlertTriangle size={13} /> {error}
+          <div role="alert" className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2.5 text-xs text-red-600 dark:text-red-400 flex items-center gap-1.5">
+            <AlertTriangle aria-hidden="true" size={13} /> {error}
           </div>
         )}
 
         {filtered.length === 0 && (
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-12 text-center shadow-sm" style={fadeUp(140)}>
             <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800 flex items-center justify-center mx-auto mb-3">
-              <MessageSquare size={20} className="text-indigo-500 dark:text-indigo-400" />
+              <MessageSquare aria-hidden="true" size={20} className="text-indigo-500 dark:text-indigo-400" />
             </div>
-            <p className="text-gray-900 dark:text-white font-medium mb-1">No posts yet</p>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">Be the first to share feedback!</p>
+            {posts.length === 0 ? (
+              <>
+                <p className="text-gray-900 dark:text-white font-medium mb-1">No posts yet</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">Be the first to share feedback!</p>
+              </>
+            ) : (
+              <>
+                <p className="text-gray-900 dark:text-white font-medium mb-1">
+                  No {categoryMeta(filter).label.toLowerCase()} posts yet
+                </p>
+                <button
+                  onClick={() => setFilter('all')}
+                  className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 text-sm font-medium transition-colors"
+                >
+                  Show all posts
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -308,9 +380,9 @@ export default function Feedback() {
                         <p className="text-sm text-gray-900 dark:text-white font-semibold leading-tight">{displayName}</p>
                         <p className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-0.5">
                           {timeAgo(post.created_at)}
-                          <span className="text-gray-300 dark:text-gray-600">·</span>
+                          <span aria-hidden="true" className="text-gray-300 dark:text-gray-600">·</span>
                           <span className="flex items-center gap-1">
-                            <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                            <span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
                             {meta.label}
                           </span>
                         </p>
@@ -323,19 +395,23 @@ export default function Feedback() {
                           onClick={(e) => { e.stopPropagation(); setOpenMenuId(menuOpen ? null : post.id) }}
                           className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
                           aria-label="Post options"
+                          aria-haspopup="menu"
+                          aria-expanded={menuOpen}
                         >
-                          <MoreHorizontal size={16} />
+                          <MoreHorizontal aria-hidden="true" size={16} />
                         </button>
                         {menuOpen && (
                           <div
+                            role="menu"
                             onClick={(e) => e.stopPropagation()}
                             className="absolute right-0 top-8 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[140px]"
                           >
                             <button
-                              onClick={() => { setOpenMenuId(null); setConfirmDeletePost(post) }}
+                              role="menuitem"
+                              onClick={() => { setOpenMenuId(null); setDeleteError(''); setConfirmDeletePost(post) }}
                               className="w-full text-left px-3.5 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center gap-2 transition-colors"
                             >
-                              <Trash2 size={14} /> Delete post
+                              <Trash2 aria-hidden="true" size={14} /> Delete post
                             </button>
                           </div>
                         )}
@@ -343,17 +419,18 @@ export default function Feedback() {
                     )}
                   </div>
 
-                  <p className="text-gray-800 dark:text-gray-200 text-sm mt-3 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+                  <p className="text-gray-800 dark:text-gray-200 text-sm mt-3 whitespace-pre-wrap break-words leading-relaxed">{post.content}</p>
                 </div>
 
                 {(post.like_count > 0 || post.comment_count > 0) && (
                   <div className="flex items-center justify-between px-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">
                     {post.like_count > 0 ? (
                       <span className="flex items-center gap-1">
-                        <span className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0">
+                        <span aria-hidden="true" className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0">
                           <ThumbsUp size={9} className="text-white" fill="currentColor" />
                         </span>
                         {post.like_count}
+                        <span className="sr-only"> like{post.like_count !== 1 ? 's' : ''}</span>
                       </span>
                     ) : <span />}
                     {post.comment_count > 0 && (
@@ -372,7 +449,7 @@ export default function Feedback() {
                     className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold transition-colors
                       ${liked ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'} hover:bg-gray-50 dark:hover:bg-gray-700`}
                   >
-                    <ThumbsUp size={16} fill={liked ? 'currentColor' : 'none'} />
+                    <ThumbsUp aria-hidden="true" size={16} fill={liked ? 'currentColor' : 'none'} />
                     Like
                   </button>
                   <button
@@ -380,7 +457,7 @@ export default function Feedback() {
                     aria-expanded={isExpanded}
                     className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
-                    <MessageSquare size={16} /> Comment
+                    <MessageSquare aria-hidden="true" size={16} /> Comment
                   </button>
                 </div>
 
@@ -388,8 +465,8 @@ export default function Feedback() {
                   <div className="px-4 pb-4 pt-1 space-y-3">
                     {commentsLoading && (
                       <div className="space-y-2">
-                        {[1, 2].map(i => (
-                          <div key={i} className="h-8 bg-gray-100 dark:bg-gray-700 rounded-2xl animate-pulse" />
+                        {[1, 2].map(n => (
+                          <div key={n} className="h-8 bg-gray-100 dark:bg-gray-700 rounded-2xl animate-pulse" />
                         ))}
                       </div>
                     )}
@@ -407,9 +484,9 @@ export default function Feedback() {
                               <p className="text-xs text-gray-900 dark:text-white font-semibold">
                                 {c.is_admin ? 'StudyFlow Admin' : c.is_anonymous ? 'Anonymous' : (c.author_name || 'Unknown')}
                               </p>
-                              {c.is_admin && <ShieldCheck size={11} className="text-indigo-600 dark:text-indigo-400 flex-shrink-0" />}
+                              {c.is_admin && <ShieldCheck aria-hidden="true" size={11} className="text-indigo-600 dark:text-indigo-400 flex-shrink-0" />}
                             </div>
-                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">{c.content}</p>
+                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 break-words whitespace-pre-wrap">{c.content}</p>
                           </div>
                           <div className="flex items-center gap-2 mt-1 ml-1">
                             {c.created_at && (
@@ -417,7 +494,7 @@ export default function Feedback() {
                             )}
                             {c.user_id === user?.id && (
                               <button
-                                onClick={() => deleteComment(post.id, c.id)}
+                                onClick={() => handleDeleteComment(post.id, c.id)}
                                 aria-label="Delete comment"
                                 className="text-[10px] text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 font-medium transition-colors"
                               >
@@ -430,14 +507,18 @@ export default function Feedback() {
                     ))}
 
                     <div className="flex items-start gap-2 pt-1">
-                      <Avatar name={user?.name} isAnonymous={false} size="sm" />
+                      <Avatar name={myName} isAnonymous={false} size="sm" />
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <input
                             ref={isExpanded ? commentInputRef : null}
                             value={commentDrafts[post.id] || ''}
-                            onChange={e => setCommentDrafts(prev => ({ ...prev, [post.id]: e.target.value }))}
-                            onKeyDown={e => e.key === 'Enter' && handleAddComment(post.id)}
+                            onChange={e => setCommentDrafts(prev => ({ ...prev, [post.id]: e.target.value.slice(0, MAX_COMMENT_LEN) }))}
+                            onKeyDown={e => {
+                              // isComposing guard: don't submit while an IME is mid-composition
+                              if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleAddComment(post.id)
+                            }}
+                            maxLength={MAX_COMMENT_LEN}
                             placeholder="Write a comment..."
                             aria-label="Write a comment"
                             className="flex-1 bg-gray-100 dark:bg-gray-900 border-none rounded-full px-4 py-2 text-xs text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
@@ -448,11 +529,11 @@ export default function Feedback() {
                             aria-label="Send comment"
                             className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white transition-colors"
                           >
-                            {commentPosting === post.id ? <Loader2 size={14} className="animate-spin" /> : <Send size={13} />}
+                            {commentPosting === post.id ? <Loader2 aria-hidden="true" size={14} className="animate-spin" /> : <Send aria-hidden="true" size={13} />}
                           </button>
                         </div>
                         {commentErrors[post.id] && (
-                          <p className="text-red-600 dark:text-red-400 text-[10px] mt-1 ml-1">{commentErrors[post.id]}</p>
+                          <p role="alert" className="text-red-600 dark:text-red-400 text-[10px] mt-1 ml-1">{commentErrors[post.id]}</p>
                         )}
                       </div>
                     </div>
@@ -468,19 +549,31 @@ export default function Feedback() {
             className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
             role="dialog"
             aria-modal="true"
-            onClick={(e) => e.target === e.currentTarget && setConfirmDeletePost(null)}
+            aria-labelledby="delete-post-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !deletingPost) {
+                setConfirmDeletePost(null)
+                setDeleteError('')
+              }
+            }}
           >
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-xl">
               <div className="text-center">
                 <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center justify-center mx-auto mb-3">
-                  <Trash2 size={20} className="text-red-500 dark:text-red-400" />
+                  <Trash2 aria-hidden="true" size={20} className="text-red-500 dark:text-red-400" />
                 </div>
-                <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Delete this post?</h3>
+                <h3 id="delete-post-title" className="text-gray-900 dark:text-white font-semibold text-lg">Delete this post?</h3>
                 <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">This cannot be undone.</p>
               </div>
+
+              {deleteError && (
+                <p role="alert" className="text-red-600 dark:text-red-400 text-xs text-center">{deleteError}</p>
+              )}
+
               <div className="flex gap-3">
                 <button
-                  onClick={() => setConfirmDeletePost(null)}
+                  autoFocus
+                  onClick={() => { setConfirmDeletePost(null); setDeleteError('') }}
                   disabled={deletingPost}
                   className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-40"
                 >

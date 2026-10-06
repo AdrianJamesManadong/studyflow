@@ -22,7 +22,6 @@ import {
   UserSearch,
   Pencil,
   Save,
-  Heart,
   ChevronUp,
   ChevronDown,
   Send,
@@ -31,9 +30,20 @@ import {
   Activity,
   UserCheck,
   TrendingUp,
+  Eye,
 } from 'lucide-react'
 
 const ADMIN_EMAIL = 'adrianjames082506@gmail.com'
+
+/*
+  Entrance animation helper (same pattern as Dashboard / Assignments / Notes /
+  Calendar). Uses "backwards" rather than "both": with "both" the last
+  keyframe sticks forever and cancels out any hover/active transform on the
+  same element.
+*/
+const fadeUp = (delay = 0) => ({
+  animation: `fadeUp 0.5s cubic-bezier(0.22,1,0.36,1) ${delay}ms backwards`,
+})
 
 const FEEDBACK_CATEGORIES = [
   { id: 'general', label: 'General', style: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800' },
@@ -42,6 +52,27 @@ const FEEDBACK_CATEGORIES = [
 ]
 function feedbackCategoryMeta(id) {
   return FEEDBACK_CATEGORIES.find(c => c.id === id) || FEEDBACK_CATEGORIES[0]
+}
+
+// Same reaction set as the student-facing Feedback page, so admin sees the
+// same emoji vocabulary rather than a plain like count.
+const REACTIONS = [
+  { id: 'like',       label: 'Like',       emoji: '👍' },
+  { id: 'love',       label: 'Love',       emoji: '❤️' },
+  { id: 'celebrate',  label: 'Celebrate',  emoji: '🎉' },
+  { id: 'insightful', label: 'Insightful', emoji: '💡' },
+  { id: 'funny',      label: 'Funny',      emoji: '😂' },
+]
+function reactionMeta(id) {
+  return REACTIONS.find(r => r.id === id) || REACTIONS[0]
+}
+// Tolerates either a real `reactions` count map (upgraded hook) or the
+// older single `like_count` field, same fallback as the Feedback page.
+function reactionSummary(post) {
+  const raw = post.reactions && typeof post.reactions === 'object' ? post.reactions : { like: post.like_count || 0 }
+  const entries = Object.entries(raw).filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1])
+  const total = entries.reduce((sum, [, count]) => sum + count, 0)
+  return { top: entries.slice(0, 3).map(([id]) => id), total }
 }
 
 // ── Announcement type config: icon, accent classes, and card styling in one place ──
@@ -68,7 +99,8 @@ function IconButton({ Icon, onClick, title, tone = 'default', className = '' }) 
       onClick={onClick}
       title={title}
       aria-label={title}
-      className={`w-7 h-7 flex items-center justify-center rounded-lg transition ${toneClass} ${className}`}
+      className={`w-7 h-7 flex items-center justify-center rounded-lg transition active:scale-90
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-gray-800 ${toneClass} ${className}`}
     >
       <Icon aria-hidden="true" size={15} />
     </button>
@@ -104,6 +136,53 @@ function UserAvatar({ user, size = 'sm' }) {
     <div className={`${sizeClass} rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold flex-shrink-0`}>
       {name?.[0]?.toUpperCase() ?? '?'}
     </div>
+  )
+}
+
+// ── Shared modal shell: backdrop + bottom-sheet-on-mobile / centered-on-desktop card ──
+function Modal({ children, onClose, labelId }) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={labelId}
+      className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-t-2xl sm:rounded-2xl p-6 w-full sm:max-w-sm space-y-4 shadow-xl">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// ── Shared confirm-delete dialog, replacing four near-identical copies ──
+function ConfirmDialog({ titleId, Icon = Trash2, title, children, confirmLabel, busyLabel, busy, onCancel, onConfirm }) {
+  return (
+    <Modal onClose={() => !busy && onCancel()} labelId={titleId}>
+      <div className="text-center">
+        <ModalIcon Icon={Icon} tone="danger" />
+        <h3 id={titleId} className="text-gray-900 dark:text-white font-semibold text-lg">{title}</h3>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{children}</p>
+      </div>
+      <div className="flex gap-3">
+        <button
+          autoFocus
+          onClick={onCancel}
+          disabled={busy}
+          className="flex-1 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg py-3 sm:py-2 text-sm transition disabled:opacity-40"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={busy}
+          className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-3 sm:py-2 text-sm transition disabled:opacity-40"
+        >
+          {busy ? busyLabel : confirmLabel}
+        </button>
+      </div>
+    </Modal>
   )
 }
 
@@ -153,12 +232,15 @@ export default function Admin() {
   const [userDetails, setUserDetails] = useState(null)
   const [userDetailsLoading, setUserDetailsLoading] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [deletingUser, setDeletingUser] = useState(false)
   const [announcements, setAnnouncements] = useState([])
   const [annForm, setAnnForm] = useState({ title: '', message: '', type: 'info' })
   const [annLoading, setAnnLoading] = useState(false)
   const [annSuccess, setAnnSuccess] = useState(false)
   const [editingAnn, setEditingAnn] = useState(null)
   const [confirmDeleteAnn, setConfirmDeleteAnn] = useState(null)
+  const [deletingAnn, setDeletingAnn] = useState(false)
+  const [activeBarIdx, setActiveBarIdx] = useState(null)
 
   // ── Feedback moderation state ──
   const {
@@ -178,6 +260,7 @@ export default function Admin() {
   const [confirmDeleteFeedbackPost, setConfirmDeleteFeedbackPost] = useState(null)
   const [deletingFeedbackPost, setDeletingFeedbackPost] = useState(false)
   const [confirmDeleteFeedbackComment, setConfirmDeleteFeedbackComment] = useState(null)
+  const [deletingFeedbackComment, setDeletingFeedbackComment] = useState(false)
 
   if (user?.email !== ADMIN_EMAIL) {
     return <Navigate to="/dashboard" replace />
@@ -193,6 +276,28 @@ export default function Admin() {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
     return () => clearTimeout(t)
   }, [search])
+
+  // Escape closes whichever confirm dialog is open (unless mid-delete), and
+  // page scroll is locked behind any of them.
+  const anyConfirmOpen = !!(confirmDelete || confirmDeleteAnn || confirmDeleteFeedbackPost || confirmDeleteFeedbackComment)
+  const anyBusy = deletingUser || deletingAnn || deletingFeedbackPost || deletingFeedbackComment
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== 'Escape' || anyBusy) return
+      setConfirmDelete(null)
+      setConfirmDeleteAnn(null)
+      setConfirmDeleteFeedbackPost(null)
+      setConfirmDeleteFeedbackComment(null)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [anyBusy])
+
+  useEffect(() => {
+    document.body.style.overflow = anyConfirmOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [anyConfirmOpen])
 
   async function fetchData() {
     setLoading(true)
@@ -255,18 +360,23 @@ export default function Admin() {
   }
 
   async function handleDeleteUser(u) {
-    await supabase.from('assignments').delete().eq('user_id', u.id)
-    await supabase.from('grades').delete().eq('user_id', u.id)
-    await supabase.from('notes').delete().eq('user_id', u.id)
-    await supabase.from('reminders').delete().eq('user_id', u.id)
-    await supabase.from('subjects').delete().eq('user_id', u.id)
-    setUsers(prev => prev.filter(x => x.id !== u.id))
-    setConfirmDelete(null)
-    if (selectedUser?.id === u.id) {
-      setSelectedUser(null)
-      setUserDetails(null)
+    setDeletingUser(true)
+    try {
+      await supabase.from('assignments').delete().eq('user_id', u.id)
+      await supabase.from('grades').delete().eq('user_id', u.id)
+      await supabase.from('notes').delete().eq('user_id', u.id)
+      await supabase.from('reminders').delete().eq('user_id', u.id)
+      await supabase.from('subjects').delete().eq('user_id', u.id)
+      setUsers(prev => prev.filter(x => x.id !== u.id))
+      setConfirmDelete(null)
+      if (selectedUser?.id === u.id) {
+        setSelectedUser(null)
+        setUserDetails(null)
+      }
+      fetchData()
+    } finally {
+      setDeletingUser(false)
     }
-    fetchData()
   }
 
   async function handlePostAnnouncement() {
@@ -322,9 +432,14 @@ export default function Admin() {
   }
 
   async function handleDeleteAnnouncement(id) {
-    await supabase.from('announcements').delete().eq('id', id)
-    setAnnouncements(prev => prev.filter(a => a.id !== id))
-    setConfirmDeleteAnn(null)
+    setDeletingAnn(true)
+    try {
+      await supabase.from('announcements').delete().eq('id', id)
+      setAnnouncements(prev => prev.filter(a => a.id !== id))
+      setConfirmDeleteAnn(null)
+    } finally {
+      setDeletingAnn(false)
+    }
   }
 
   function timeAgo(dateStr) {
@@ -379,8 +494,13 @@ export default function Admin() {
 
   async function handleDeleteFeedbackComment() {
     const { postId, commentId } = confirmDeleteFeedbackComment
-    await deleteFeedbackComment(postId, commentId)
-    setConfirmDeleteFeedbackComment(null)
+    setDeletingFeedbackComment(true)
+    try {
+      await deleteFeedbackComment(postId, commentId)
+      setConfirmDeleteFeedbackComment(null)
+    } finally {
+      setDeletingFeedbackComment(false)
+    }
   }
 
   const filtered = users.filter(u =>
@@ -411,14 +531,30 @@ export default function Admin() {
     bug: feedbackPosts.filter(p => p.category === 'bug').length,
     feature: feedbackPosts.filter(p => p.category === 'feature').length,
     comments: feedbackPosts.reduce((acc, p) => acc + (p.comment_count || 0), 0),
-    likes: feedbackPosts.reduce((acc, p) => acc + (p.like_count || 0), 0),
   }
+
+  const previewCfg = ANN_TYPES[annForm.type] ?? ANN_TYPES.info
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .adm-stat { transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s; }
+        .adm-stat:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(31,41,55,0.06); }
+        .adm-bar { transition: height .5s cubic-bezier(0.22,1,0.36,1); }
+
+        @media (prefers-reduced-motion: reduce) {
+          [style*="fadeUp"] { animation: none !important; }
+          .adm-stat, .adm-bar { transition: none !important; }
+          .adm-stat:hover { transform: none; }
+        }
+      `}</style>
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" style={fadeUp(0)}>
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Admin Panel</h2>
@@ -428,7 +564,7 @@ export default function Admin() {
         </div>
         <button
           onClick={() => { fetchData(); fetchAnnouncements() }}
-          className="flex items-center gap-1.5 text-xs sm:text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white px-3 sm:px-4 py-2 rounded-lg transition shadow-sm"
+          className="flex items-center gap-1.5 text-xs sm:text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white px-3 sm:px-4 py-2 rounded-lg transition shadow-sm active:scale-95"
         >
           <RefreshCw aria-hidden="true" size={14} />
           <span className="hidden sm:inline">Refresh</span>
@@ -447,7 +583,8 @@ export default function Admin() {
         ].map((stat, i) => (
           <div
             key={stat.label}
-            className={`bg-white dark:bg-gray-800 border rounded-xl p-3 sm:p-4 shadow-sm ${stat.glow} ${i === 4 ? 'col-span-2 lg:col-span-1' : ''}`}
+            className={`adm-stat bg-white dark:bg-gray-800 border rounded-xl p-3 sm:p-4 shadow-sm ${stat.glow} ${i === 4 ? 'col-span-2 lg:col-span-1' : ''}`}
+            style={fadeUp(60 + i * 40)}
           >
             <stat.Icon aria-hidden="true" size={22} className={`mb-1.5 sm:mb-2 block ${stat.accent}`} />
             <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
@@ -457,12 +594,12 @@ export default function Admin() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-1 overflow-x-auto shadow-sm">
+      <div className="flex gap-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-1 overflow-x-auto shadow-sm" style={fadeUp(320)}>
         {TABS.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap active:scale-95
               ${activeTab === tab.key ? 'bg-indigo-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700'}`}
           >
             <tab.Icon aria-hidden="true" size={15} />
@@ -473,7 +610,7 @@ export default function Admin() {
 
       {/* ─── Users Tab ─── */}
       {activeTab === 'users' && (
-        <div className="flex flex-col lg:flex-row gap-4">
+        <div className="flex flex-col lg:flex-row gap-4" style={fadeUp(0)}>
           <div className="flex-1 space-y-3 min-w-0">
             <div className="relative">
               <Search aria-hidden="true" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
@@ -481,8 +618,18 @@ export default function Admin() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search users..."
-                className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg pl-10 pr-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 transition text-sm"
+                aria-label="Search users"
+                className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg pl-10 pr-9 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition text-sm"
               />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                >
+                  <X size={13} aria-hidden="true" />
+                </button>
+              )}
             </div>
 
             {loading ? (
@@ -679,7 +826,7 @@ export default function Admin() {
 
       {/* ─── Visitors Tab ─── */}
       {activeTab === 'visitors' && (
-        <div className="space-y-4">
+        <div className="space-y-4" style={fadeUp(0)}>
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
             {[
               { label: 'Active Today',     value: visitorStats.activeToday, Icon: UserCheck,  accent: 'text-emerald-600 dark:text-emerald-400', glow: 'border-emerald-100 dark:border-emerald-900' },
@@ -688,8 +835,8 @@ export default function Admin() {
               { label: 'New Today',        value: visitorStats.newToday,    Icon: TrendingUp, accent: 'text-amber-600 dark:text-amber-400',   glow: 'border-amber-100 dark:border-amber-900' },
               { label: 'New This Week',    value: visitorStats.newWeek,     Icon: TrendingUp, accent: 'text-violet-600 dark:text-violet-400', glow: 'border-violet-100 dark:border-violet-900' },
               { label: 'New This Month',   value: visitorStats.newMonth,    Icon: TrendingUp, accent: 'text-rose-600 dark:text-rose-400',     glow: 'border-rose-100 dark:border-rose-900' },
-            ].map(stat => (
-              <div key={stat.label} className={`bg-white dark:bg-gray-800 border rounded-xl p-3 sm:p-4 shadow-sm ${stat.glow}`}>
+            ].map((stat, i) => (
+              <div key={stat.label} className={`adm-stat bg-white dark:bg-gray-800 border rounded-xl p-3 sm:p-4 shadow-sm ${stat.glow}`} style={fadeUp(i * 40)}>
                 <stat.Icon aria-hidden="true" size={22} className={`mb-1.5 sm:mb-2 block ${stat.accent}`} />
                 <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
                 <p className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">{stat.label}</p>
@@ -700,18 +847,29 @@ export default function Admin() {
           <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-4 sm:p-6 shadow-sm">
             <h3 className="text-gray-900 dark:text-white font-semibold mb-4">Signups — Last 14 Days</h3>
             <div className="flex items-end gap-1.5 sm:gap-2 h-32">
-              {signupTrend.map(b => (
-                <div key={b.label} className="flex-1 flex flex-col items-center justify-end gap-1 group relative h-full">
-                  <span className="text-[10px] text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 transition absolute -top-4">{b.count}</span>
+              {signupTrend.map((b, i) => (
+                <button
+                  key={b.label}
+                  type="button"
+                  onClick={() => setActiveBarIdx(prev => (prev === i ? null : i))}
+                  aria-label={`${b.label}: ${b.count} signup${b.count !== 1 ? 's' : ''}`}
+                  className="flex-1 flex flex-col items-center justify-end gap-1 group relative h-full focus-visible:outline-none"
+                >
+                  <span
+                    className={`text-[10px] text-gray-500 dark:text-gray-400 transition absolute -top-4
+                      ${activeBarIdx === i ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  >
+                    {b.count}
+                  </span>
                   <div
-                    className="w-full rounded-t-md bg-indigo-500 dark:bg-indigo-500/80 min-h-[3px] transition-all mt-auto"
+                    className={`adm-bar w-full rounded-t-md min-h-[3px] mt-auto ${activeBarIdx === i ? 'bg-indigo-600 dark:bg-indigo-400' : 'bg-indigo-500 dark:bg-indigo-500/80'}`}
                     style={{ height: `${(b.count / maxTrendCount) * 100}%` }}
                   />
                   <span className="text-[9px] text-gray-400 dark:text-gray-500 whitespace-nowrap">{b.label.split(' ')[1]}</span>
-                </div>
+                </button>
               ))}
             </div>
-            <p className="text-gray-400 dark:text-gray-500 text-xs mt-3">Based on account creation dates. Hover a bar for the exact count.</p>
+            <p className="text-gray-400 dark:text-gray-500 text-xs mt-3">Based on account creation dates. Tap or hover a bar for the exact count.</p>
           </div>
 
           <p className="text-gray-400 dark:text-gray-500 text-xs">
@@ -722,7 +880,7 @@ export default function Admin() {
 
       {/* ─── Announcements Tab ─── */}
       {activeTab === 'announcements' && (
-        <div className="space-y-4">
+        <div className="space-y-4" style={fadeUp(0)}>
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3">
             {[
               { label: 'Total',   value: announcementStatsTotals.total,   style: 'text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700' },
@@ -764,33 +922,36 @@ export default function Admin() {
             </div>
 
             <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Title</label>
+              <label htmlFor="ann-title" className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Title</label>
               <input
+                id="ann-title"
                 value={annForm.title}
                 onChange={e => setAnnForm(f => ({ ...f, title: e.target.value }))}
                 placeholder="e.g. System Maintenance"
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 transition text-sm"
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition text-sm"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Message</label>
+              <label htmlFor="ann-message" className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Message</label>
               <textarea
+                id="ann-message"
                 value={annForm.message}
                 onChange={e => setAnnForm(f => ({ ...f, message: e.target.value }))}
                 placeholder="Write your announcement here..."
                 rows={3}
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 transition text-sm resize-none"
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition text-sm resize-none"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Type</label>
+              <span className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Type</span>
               <div className="grid grid-cols-2 sm:flex gap-2">
                 {Object.entries(ANN_TYPES).map(([t, cfg]) => (
                   <button
                     key={t}
                     onClick={() => setAnnForm(f => ({ ...f, type: t }))}
+                    aria-pressed={annForm.type === t}
                     className={`flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-xs font-medium border transition
                       ${annForm.type === t ? cfg.chip : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
                   >
@@ -800,6 +961,23 @@ export default function Admin() {
                 ))}
               </div>
             </div>
+
+            {/* Live preview: shows the announcement exactly as users will see it */}
+            {(annForm.title.trim() || annForm.message.trim()) && (
+              <div>
+                <span className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 mb-1.5">
+                  <Eye size={12} aria-hidden="true" /> Preview
+                </span>
+                <div className={`border rounded-xl p-4 ${previewCfg.card}`}>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <previewCfg.Icon aria-hidden="true" size={14} className={previewCfg.chip.split(' ').find(c => c.startsWith('text-'))} />
+                    <p className="font-semibold text-gray-900 dark:text-white">{annForm.title.trim() || 'Untitled announcement'}</p>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${previewCfg.chip}`}>{previewCfg.label}</span>
+                  </div>
+                  <p className="text-gray-600 dark:text-gray-300 text-sm whitespace-pre-wrap">{annForm.message.trim() || 'Your message will appear here.'}</p>
+                </div>
+              </div>
+            )}
 
             {annSuccess && (
               <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg px-4 py-2.5 flex items-center gap-2">
@@ -811,7 +989,7 @@ export default function Admin() {
             <button
               onClick={handlePostAnnouncement}
               disabled={annLoading || !annForm.title.trim() || !annForm.message.trim()}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-6 py-2.5 rounded-lg transition text-sm"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-6 py-2.5 rounded-lg transition text-sm active:scale-95"
             >
               {annLoading ? (
                 'Saving...'
@@ -859,14 +1037,13 @@ export default function Admin() {
 
       {/* ─── Feedback Tab ─── */}
       {activeTab === 'feedback' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3">
+        <div className="space-y-4" style={fadeUp(0)}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             {[
               { label: 'Total Posts', value: feedbackStatsTotals.total,    style: 'text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700' },
               { label: 'General',     value: feedbackStatsTotals.general,  style: feedbackCategoryMeta('general').style },
               { label: 'Bug',         value: feedbackStatsTotals.bug,      style: feedbackCategoryMeta('bug').style },
               { label: 'Feature',     value: feedbackStatsTotals.feature,  style: feedbackCategoryMeta('feature').style },
-              { label: 'Comments',    value: feedbackStatsTotals.comments, style: 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' },
             ].map(s => (
               <div key={s.label} className={`border rounded-xl px-3 py-2.5 text-center ${s.style}`}>
                 <p className="text-lg font-bold">{s.value}</p>
@@ -915,6 +1092,7 @@ export default function Admin() {
                 const meta = feedbackCategoryMeta(post.category)
                 const displayName = post.is_anonymous ? 'Anonymous' : (post.author_name || 'Unknown')
                 const isExpanded = expandedFeedbackId === post.id
+                const { top, total } = reactionSummary(post)
                 return (
                   <div key={post.id} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
@@ -932,11 +1110,27 @@ export default function Admin() {
 
                     <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
                       <span className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
-                        <Heart aria-hidden="true" size={14} />
-                        {post.like_count}
+                        {total > 0 ? (
+                          <>
+                            <span className="flex -space-x-1">
+                              {top.map(id => (
+                                <span
+                                  key={id}
+                                  className="w-4 h-4 rounded-full bg-white dark:bg-gray-800 border border-white dark:border-gray-800 flex items-center justify-center text-[10px] shadow-sm"
+                                >
+                                  {reactionMeta(id).emoji}
+                                </span>
+                              ))}
+                            </span>
+                            {total}
+                          </>
+                        ) : (
+                          <span className="text-gray-300 dark:text-gray-600">No reactions</span>
+                        )}
                       </span>
                       <button
                         onClick={() => toggleFeedbackExpand(post.id)}
+                        aria-expanded={isExpanded}
                         className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
                       >
                         <MessageCircle aria-hidden="true" size={14} />
@@ -977,6 +1171,7 @@ export default function Admin() {
                             onChange={e => setAdminReplyDrafts(prev => ({ ...prev, [post.id]: e.target.value }))}
                             onKeyDown={e => e.key === 'Enter' && handleAdminReply(post.id)}
                             placeholder="Reply as StudyFlow Admin..."
+                            aria-label="Reply as StudyFlow Admin"
                             className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-400 transition"
                           />
                           <button
@@ -1001,82 +1196,69 @@ export default function Admin() {
         </div>
       )}
 
-      {/* Confirm Delete User Modal */}
+      {/* Confirm Delete User */}
       {confirmDelete && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-t-2xl sm:rounded-2xl p-6 w-full sm:max-w-sm space-y-4 shadow-xl">
-            <div className="text-center">
-              <ModalIcon Icon={Trash2} tone="danger" />
-              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Delete User Data?</h3>
-              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                This will permanently delete all data for{' '}
-                <span className="text-gray-900 dark:text-white font-medium">{confirmDelete.name || confirmDelete.email}</span>.
-                This cannot be undone.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDelete(null)} className="flex-1 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg py-3 sm:py-2 text-sm transition">Cancel</button>
-              <button onClick={() => handleDeleteUser(confirmDelete)} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-3 sm:py-2 text-sm transition">Yes, Delete</button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          titleId="delete-user-title"
+          title="Delete User Data?"
+          confirmLabel="Yes, Delete"
+          busyLabel="Deleting…"
+          busy={deletingUser}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => handleDeleteUser(confirmDelete)}
+        >
+          This will permanently delete all data for{' '}
+          <span className="text-gray-900 dark:text-white font-medium">{confirmDelete.name || confirmDelete.email}</span>.
+          This cannot be undone.
+        </ConfirmDialog>
       )}
 
-      {/* Confirm Delete Announcement Modal */}
+      {/* Confirm Delete Announcement */}
       {confirmDeleteAnn && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-t-2xl sm:rounded-2xl p-6 w-full sm:max-w-sm space-y-4 shadow-xl">
-            <div className="text-center">
-              <ModalIcon Icon={Megaphone} tone="danger" />
-              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Delete Announcement?</h3>
-              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                Are you sure you want to delete{' '}
-                <span className="text-gray-900 dark:text-white font-medium">"{confirmDeleteAnn.title}"</span>?
-                It will be removed from all users' dashboards.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDeleteAnn(null)} className="flex-1 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg py-3 sm:py-2 text-sm transition">Cancel</button>
-              <button onClick={() => handleDeleteAnnouncement(confirmDeleteAnn.id)} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-3 sm:py-2 text-sm transition">Yes, Delete</button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          titleId="delete-ann-title"
+          Icon={Megaphone}
+          title="Delete Announcement?"
+          confirmLabel="Yes, Delete"
+          busyLabel="Deleting…"
+          busy={deletingAnn}
+          onCancel={() => setConfirmDeleteAnn(null)}
+          onConfirm={() => handleDeleteAnnouncement(confirmDeleteAnn.id)}
+        >
+          Are you sure you want to delete{' '}
+          <span className="text-gray-900 dark:text-white font-medium">"{confirmDeleteAnn.title}"</span>?
+          It will be removed from all users' dashboards.
+        </ConfirmDialog>
       )}
 
-      {/* Confirm Delete Feedback Post Modal */}
+      {/* Confirm Delete Feedback Post */}
       {confirmDeleteFeedbackPost && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-t-2xl sm:rounded-2xl p-6 w-full sm:max-w-sm space-y-4 shadow-xl">
-            <div className="text-center">
-              <ModalIcon Icon={Trash2} tone="danger" />
-              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Delete Feedback Post?</h3>
-              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">This will remove the post and all its comments. This cannot be undone.</p>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDeleteFeedbackPost(null)} disabled={deletingFeedbackPost} className="flex-1 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg py-3 sm:py-2 text-sm transition disabled:opacity-40">Cancel</button>
-              <button onClick={handleDeleteFeedbackPost} disabled={deletingFeedbackPost} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-3 sm:py-2 text-sm transition disabled:opacity-40">
-                {deletingFeedbackPost ? 'Deleting…' : 'Yes, Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          titleId="delete-feedback-post-title"
+          title="Delete Feedback Post?"
+          confirmLabel="Yes, Delete"
+          busyLabel="Deleting…"
+          busy={deletingFeedbackPost}
+          onCancel={() => setConfirmDeleteFeedbackPost(null)}
+          onConfirm={handleDeleteFeedbackPost}
+        >
+          This will remove the post and all its comments. This cannot be undone.
+        </ConfirmDialog>
       )}
 
-      {/* Confirm Delete Feedback Comment Modal */}
+      {/* Confirm Delete Feedback Comment */}
       {confirmDeleteFeedbackComment && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-t-2xl sm:rounded-2xl p-6 w-full sm:max-w-sm space-y-4 shadow-xl">
-            <div className="text-center">
-              <ModalIcon Icon={Trash2} tone="danger" />
-              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Delete Comment?</h3>
-              <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">This cannot be undone.</p>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDeleteFeedbackComment(null)} className="flex-1 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg py-3 sm:py-2 text-sm transition">Cancel</button>
-              <button onClick={handleDeleteFeedbackComment} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg py-3 sm:py-2 text-sm transition">Yes, Delete</button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          titleId="delete-feedback-comment-title"
+          title="Delete Comment?"
+          confirmLabel="Yes, Delete"
+          busyLabel="Deleting…"
+          busy={deletingFeedbackComment}
+          onCancel={() => setConfirmDeleteFeedbackComment(null)}
+          onConfirm={handleDeleteFeedbackComment}
+        >
+          This cannot be undone.
+        </ConfirmDialog>
       )}
 
     </div>
@@ -1089,7 +1271,11 @@ function UserDetailPanel({ selectedUser, userDetails, userDetailsLoading, onClos
     <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-4 shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-gray-900 dark:text-white font-semibold">User Details</h3>
-        <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+        <button
+          onClick={onClose}
+          aria-label="Close user details"
+          className="w-6 h-6 flex items-center justify-center rounded text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+        >
           <X aria-hidden="true" size={14} />
         </button>
       </div>

@@ -61,11 +61,26 @@ const EVENT_COLORS = {
 }
 const EMPTY_FORM = { title: '', date: '', time: '', type: 'reminder', color: 'indigo' }
 
+// Fallback swatch for subjects whose stored `color` isn't the expected
+// { bg, light, border, text } object (legacy/malformed rows). Without this,
+// `subject.color.bg` throws and takes the whole calendar down with it.
+const DEFAULT_SUBJECT_COLOR = {
+  bg: 'bg-indigo-500',
+  light: 'bg-indigo-50 dark:bg-indigo-950/40',
+  border: 'border-indigo-200 dark:border-indigo-800',
+  text: 'text-indigo-600 dark:text-indigo-400',
+}
+function getSubjectColor(subject) {
+  const c = subject?.color
+  return c && typeof c === 'object' && c.bg ? c : DEFAULT_SUBJECT_COLOR
+}
+
 // Fix: pure helpers outside component
 function formatTime(time) {
   if (!time) return ''
-  const [h, m] = time.split(':')
-  const hour = parseInt(h)
+  const [h, m = '00'] = time.split(':')
+  const hour = parseInt(h, 10)
+  if (Number.isNaN(hour)) return ''
   const ampm = hour >= 12 ? 'PM' : 'AM'
   const display = hour % 12 || 12
   return `${display}:${m} ${ampm}`
@@ -73,6 +88,27 @@ function formatTime(time) {
 
 function toDateStr(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+// Local-calendar "YYYY-MM-DD" for a Date (NOT toISOString, which is UTC and
+// shifts the day for anyone not on UTC — e.g. a grade logged at 2am in
+// Manila would land on the previous day).
+function localDateStr(date) {
+  return toDateStr(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+// Parses "YYYY-MM-DD" as a LOCAL date. `new Date('2026-10-06')` is parsed as
+// UTC midnight, which displays as the wrong day in timezones behind UTC.
+function parseLocalDate(str) {
+  if (!str) return null
+  const [y, m, d] = String(str).slice(0, 10).split('-').map(Number)
+  if (!y || !m || !d) return null
+  return new Date(y, m - 1, d)
+}
+
+function formatDateStr(str) {
+  const d = parseLocalDate(str)
+  return d ? d.toLocaleDateString() : ''
 }
 
 // A subject can now have multiple schedule blocks (different days/times/rooms
@@ -94,6 +130,31 @@ function getSubjectSchedules(subject) {
   return []
 }
 
+// Today's date string that rolls over at midnight (and when the tab wakes
+// from sleep), so "today" highlighting / upcoming / classes-today never go
+// stale on a page that's left open overnight.
+function useTodayStr() {
+  const [todayStr, setTodayStr] = useState(() => localDateStr(new Date()))
+
+  useEffect(() => {
+    let timer
+    const refresh = () => setTodayStr(localDateStr(new Date()))
+    const schedule = () => {
+      const now = new Date()
+      const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1)
+      timer = setTimeout(() => { refresh(); schedule() }, next - now)
+    }
+    schedule()
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [])
+
+  return todayStr
+}
+
 export default function Calendar() {
   const { assignments, loading: assignmentsLoading } = useAssignments()
   const { subjects,    loading: subjectsLoading    } = useSubjects()
@@ -102,42 +163,56 @@ export default function Calendar() {
           loading: eventsLoading                   } = useEvents()
   const { reminders,   loading: remindersLoading   } = useReminders()
 
-  // Fix: stable today — primitive ms timestamp, never changes
-  const todayMs = useMemo(() => {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    return d.getTime()
-  }, [])
-  const todayDate = useMemo(() => new Date(todayMs), [todayMs])
+  const todayStr  = useTodayStr()
+  const todayDate = useMemo(() => parseLocalDate(todayStr), [todayStr])
 
-  const [current, setCurrent]         = useState({ year: todayDate.getFullYear(), month: todayDate.getMonth() })
+  const [current, setCurrent]         = useState(() => {
+    const t = parseLocalDate(localDateStr(new Date()))
+    return { year: t.getFullYear(), month: t.getMonth() }
+  })
   const [selected, setSelected]       = useState(null)
   const [showModal, setShowModal]     = useState(false)
   const [form, setForm]               = useState(EMPTY_FORM)
   const [saving, setSaving]           = useState(false)
-  const [error, setError]             = useState('')
+  const [formError, setFormError]     = useState('')
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [deleting, setDeleting]       = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   const isLoading = assignmentsLoading || subjectsLoading || gradesLoading || eventsLoading || remindersLoading
 
-  // Fix: Escape key closes modals
+  // Escape closes the top-most modal (but not while a request is in flight)
   useEffect(() => {
+    if (!showModal && !confirmDelete) return
     const handler = (e) => {
       if (e.key !== 'Escape') return
-      setShowModal(false)
-      setConfirmDelete(null)
+      if (confirmDelete) {
+        if (!deleting) setConfirmDelete(null)
+      } else if (showModal && !saving) {
+        setShowModal(false)
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [showModal, confirmDelete, saving, deleting])
 
+  // Changing month clears the selected day — otherwise "the 14th" silently
+  // becomes the 14th of whatever month you navigated to.
   function prevMonth() {
+    setSelected(null)
     setCurrent(c => c.month === 0  ? { year: c.year - 1, month: 11 } : { ...c, month: c.month - 1 })
   }
   function nextMonth() {
+    setSelected(null)
     setCurrent(c => c.month === 11 ? { year: c.year + 1, month: 0  } : { ...c, month: c.month + 1 })
   }
+  function goToToday() {
+    setCurrent({ year: todayDate.getFullYear(), month: todayDate.getMonth() })
+    setSelected(todayDate.getDate())
+  }
+
+  const viewingCurrentMonth =
+    current.year === todayDate.getFullYear() && current.month === todayDate.getMonth()
 
   // Fix: memoised — only recalculates when month/year changes
   const cells = useMemo(() => {
@@ -149,21 +224,33 @@ export default function Calendar() {
     return arr
   }, [current.year, current.month])
 
+  const subjectById = useMemo(() => {
+    const map = {}
+    subjects.forEach(s => { map[s.id] = s })
+    return map
+  }, [subjects])
+
   // Fix: pre-index items by date string — O(1) lookup per cell instead of O(n) filter × 35 cells
   const assignmentsByDate = useMemo(() => {
     const map = {}
     assignments.forEach(a => {
+      if (!a.due_date) return
       if (!map[a.due_date]) map[a.due_date] = []
       map[a.due_date].push(a)
     })
     return map
   }, [assignments])
 
+  // Grades are keyed by the LOCAL day they were logged (created_at is a UTC
+  // timestamp, so slicing it would put late-night/early-morning grades on the
+  // wrong day for anyone ahead of or behind UTC).
   const gradesByDate = useMemo(() => {
     const map = {}
     grades.forEach(g => {
-      const ds = g.created_at?.slice(0, 10)
-      if (!ds) return
+      if (!g.created_at) return
+      const created = new Date(g.created_at)
+      if (Number.isNaN(created.getTime())) return
+      const ds = localDateStr(created)
       if (!map[ds]) map[ds] = []
       map[ds].push(g)
     })
@@ -173,6 +260,7 @@ export default function Calendar() {
   const eventsByDate = useMemo(() => {
     const map = {}
     events.forEach(e => {
+      if (!e.date) return
       if (!map[e.date]) map[e.date] = []
       map[e.date].push(e)
     })
@@ -233,8 +321,7 @@ export default function Calendar() {
   }
 
   const isToday = (day) =>
-    day !== null &&
-    toDateStr(current.year, current.month, day) === toDateStr(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate())
+    day !== null && toDateStr(current.year, current.month, day) === todayStr
 
   const selectedItems = useMemo(
     () => selected ? getItemsForDay(selected) : null,
@@ -242,22 +329,23 @@ export default function Calendar() {
     [selected, assignmentsByDate, gradesByDate, eventsByDate, remindersByDate, subjectsByWeekday, current]
   )
 
-  // Fix: upcoming list uses stable todayMs
+  // Upcoming list: compares "YYYY-MM-DD" strings directly (timezone-proof),
+  // sorted by date then time.
   const upcomingItems = useMemo(() => {
     return [
       ...assignments
-        .filter(a => a.status !== 'done' && new Date(a.due_date).getTime() >= todayMs)
-        .map(a => ({ date: a.due_date, time: a.due_time, label: a.title, type: 'assignment' })),
+        .filter(a => a.status !== 'done' && a.due_date && a.due_date >= todayStr)
+        .map(a => ({ key: `a-${a.id}`, date: a.due_date, time: a.due_time, label: a.title, type: 'assignment' })),
       ...events
-        .filter(e => new Date(e.date).getTime() >= todayMs)
-        .map(e => ({ date: e.date, time: e.time, label: e.title, type: 'event' })),
+        .filter(e => e.date && e.date >= todayStr)
+        .map(e => ({ key: `e-${e.id}`, date: e.date, time: e.time, label: e.title, type: 'event' })),
       ...reminders
-        .filter(r => !r.is_done && r.due_date && new Date(r.due_date).getTime() >= todayMs)
-        .map(r => ({ date: r.due_date, time: r.due_time, label: r.title, type: 'reminder' })),
+        .filter(r => !r.is_done && r.due_date && r.due_date >= todayStr)
+        .map(r => ({ key: `r-${r.id}`, date: r.due_date, time: r.due_time, label: r.title, type: 'reminder' })),
     ]
-      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''))
       .slice(0, 6)
-  }, [assignments, events, reminders, todayMs])
+  }, [assignments, events, reminders, todayStr])
 
   // Today's classes — recurring, so shown separately from the date-based upcoming list.
   const todaysClasses = useMemo(
@@ -268,29 +356,41 @@ export default function Calendar() {
   // Summary stats for the top row — mirrors the stat-card pattern used on
   // Notes: total events this month, items due this week, classes today.
   const summary = useMemo(() => {
-    const monthEvents = events.filter(e => e.date?.slice(0, 7) === `${current.year}-${String(current.month + 1).padStart(2, '0')}`).length
-    const weekFromNow = todayMs + 7 * 24 * 60 * 60 * 1000
-    const dueThisWeek = assignments.filter(a => a.status !== 'done' && new Date(a.due_date).getTime() >= todayMs && new Date(a.due_date).getTime() <= weekFromNow).length
+    const monthPrefix = `${current.year}-${String(current.month + 1).padStart(2, '0')}`
+    const monthEvents = events.filter(e => e.date?.startsWith(monthPrefix)).length
+    const weekEnd = localDateStr(new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate() + 7))
+    const dueThisWeek = assignments.filter(
+      a => a.status !== 'done' && a.due_date && a.due_date >= todayStr && a.due_date <= weekEnd
+    ).length
     return { monthEvents, dueThisWeek, classesToday: todaysClasses.length }
-  }, [events, assignments, todayMs, current, todaysClasses])
+  }, [events, assignments, todayStr, todayDate, current, todaysClasses])
 
+  // Opens the add-event modal with a sensible default date so the Add button
+  // isn't dead until you pick one: the clicked day, else the selected day,
+  // else today (if you're viewing this month), else the 1st of the viewed month.
   function openAddEvent(day) {
-    setForm({ ...EMPTY_FORM, date: day ? toDateStr(current.year, current.month, day) : '' })
-    setError('')
+    let date
+    if (day)           date = toDateStr(current.year, current.month, day)
+    else if (selected) date = toDateStr(current.year, current.month, selected)
+    else if (viewingCurrentMonth) date = todayStr
+    else               date = toDateStr(current.year, current.month, 1)
+
+    setForm({ ...EMPTY_FORM, date })
+    setFormError('')
     setShowModal(true)
   }
 
   // Fix: saving state, try/catch, error surfaced
   async function handleAddEvent() {
-    if (!form.title.trim() || !form.date) return
+    if (!form.title.trim() || !form.date || saving) return
     setSaving(true)
-    setError('')
+    setFormError('')
     try {
-      await addEvent(form)
+      await addEvent({ ...form, title: form.title.trim() })
       setShowModal(false)
       setForm(EMPTY_FORM)
     } catch (err) {
-      setError(err.message || 'Something went wrong. Please try again.')
+      setFormError(err.message || 'Something went wrong. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -299,20 +399,25 @@ export default function Calendar() {
   // Fix: confirm modal + async delete with error handling
   async function handleDeleteEvent() {
     setDeleting(true)
-    setError('')
+    setDeleteError('')
     try {
       await deleteEvent(confirmDelete.id)
       setConfirmDelete(null)
     } catch (err) {
-      setError(err.message || 'Failed to delete event. Please try again.')
+      setDeleteError(err.message || 'Failed to delete event. Please try again.')
     } finally {
       setDeleting(false)
     }
   }
 
+  function toggleSelect(day) {
+    setSelected(s => (s === day ? null : day))
+  }
+
   if (isLoading) {
     return (
-      <div className="space-y-4 animate-pulse">
+      <div className="space-y-4 animate-pulse motion-reduce:animate-none" role="status" aria-busy="true">
+        <span className="sr-only">Loading calendar…</span>
         <div className="h-8 bg-gray-200 dark:bg-gray-800 rounded w-40" />
         <div className="grid grid-cols-7 gap-1">
           {Array.from({ length: 35 }).map((_, i) => (
@@ -322,6 +427,9 @@ export default function Calendar() {
       </div>
     )
   }
+
+  const navBtn = 'w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500'
+  const inputCls = 'w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition'
 
   return (
     <>
@@ -334,6 +442,10 @@ export default function Calendar() {
         .c-stat:hover { transform: translateY(-2px); }
         .c-day { transition: transform .15s cubic-bezier(.22,1,.36,1), border-color .15s, background-color .15s; }
         .c-day:hover { transform: translateY(-1px); }
+        @media (prefers-reduced-motion: reduce) {
+          .c-stat, .c-day { transition: none; }
+          .c-stat:hover, .c-day:hover { transform: none; }
+        }
       `}</style>
 
       <div className="space-y-6">
@@ -344,16 +456,25 @@ export default function Calendar() {
           <div className="flex items-center gap-3 flex-wrap">
             <button
               onClick={() => openAddEvent(null)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2 hover:-translate-y-0.5"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition-all flex items-center gap-2 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
             >
-              <Plus size={15} /> Add Event
+              <Plus size={15} aria-hidden="true" /> Add Event
             </button>
-            <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
-              <ChevronLeft size={16} />
+            <button
+              onClick={goToToday}
+              disabled={viewingCurrentMonth && selected === todayDate.getDate()}
+              className="text-sm font-medium px-3 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              Today
             </button>
-            <span className="text-gray-900 dark:text-white font-semibold w-36 text-center">{MONTHS[current.month]} {current.year}</span>
-            <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
-              <ChevronRight size={16} />
+            <button onClick={prevMonth} aria-label="Previous month" className={navBtn}>
+              <ChevronLeft size={16} aria-hidden="true" />
+            </button>
+            <span aria-live="polite" className="text-gray-900 dark:text-white font-semibold w-36 text-center">
+              {MONTHS[current.month]} {current.year}
+            </span>
+            <button onClick={nextMonth} aria-label="Next month" className={navBtn}>
+              <ChevronRight size={16} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -362,21 +483,21 @@ export default function Calendar() {
         <div className="grid grid-cols-3 gap-3" style={fadeUp(60)}>
           <div className="c-stat bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 shadow-sm">
             <div className="flex items-center gap-2 text-indigo-500 dark:text-indigo-400 mb-1.5">
-              <CalendarDays size={15} />
+              <CalendarDays size={15} aria-hidden="true" />
               <span className="text-[11px] font-semibold uppercase tracking-wider">Events This Month</span>
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{summary.monthEvents}</div>
           </div>
           <div className="c-stat bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 shadow-sm">
             <div className="flex items-center gap-2 text-amber-500 dark:text-amber-400 mb-1.5">
-              <ListChecks size={15} />
+              <ListChecks size={15} aria-hidden="true" />
               <span className="text-[11px] font-semibold uppercase tracking-wider">Due This Week</span>
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{summary.dueThisWeek}</div>
           </div>
           <div className="c-stat bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 shadow-sm">
             <div className="flex items-center gap-2 text-violet-500 dark:text-violet-400 mb-1.5">
-              <GraduationCap size={15} />
+              <GraduationCap size={15} aria-hidden="true" />
               <span className="text-[11px] font-semibold uppercase tracking-wider">Classes Today</span>
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{summary.classesToday}</div>
@@ -400,74 +521,89 @@ export default function Calendar() {
               {cells.map((day, i) => {
                 const items      = getItemsForDay(day)
                 const totalItems = items.classes.length + items.assignments.length + items.reminders.length + items.grades.length + items.events.length
+                // Overflow = what the chips can't show. Each category shows at most
+                // one chip (grades collapse into a single "N grades" chip).
+                const extra = ['classes', 'assignments', 'reminders', 'events']
+                  .reduce((n, k) => n + Math.max(0, items[k].length - 1), 0)
                 const isSelected = selected === day
+                const todayCell  = isToday(day)
+
+                // Empty leading cells: purely layout
+                if (!day) return <div key={i} aria-hidden="true" className="min-h-12 lg:min-h-16" />
 
                 return (
                   <div
                     key={i}
-                    onClick={() => day && setSelected(isSelected ? null : day)}
-                    onDoubleClick={() => day && openAddEvent(day)}
-                    className={`c-day min-h-12 lg:min-h-16 rounded-lg p-1 lg:p-1.5
-                      ${!day ? '' : 'cursor-pointer'}
-                      ${isToday(day)  ? 'bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-300 dark:border-indigo-700' : day ? 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700' : ''}
-                      ${isSelected    ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/40' : ''}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSelected}
+                    aria-current={todayCell ? 'date' : undefined}
+                    aria-label={`${MONTHS[current.month]} ${day}, ${current.year}${todayCell ? ', today' : ''}${totalItems ? `, ${totalItems} item${totalItems !== 1 ? 's' : ''}` : ''}`}
+                    onClick={() => toggleSelect(day)}
+                    onDoubleClick={() => openAddEvent(day)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        toggleSelect(day)
+                      }
+                    }}
+                    className={`c-day min-h-12 lg:min-h-16 rounded-lg p-1 lg:p-1.5 cursor-pointer
+                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500
+                      ${todayCell ? 'bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-300 dark:border-indigo-700' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700'}
+                      ${isSelected ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/40' : ''}
                     `}
                   >
-                    {day && (
-                      <>
-                        <p className={`text-xs font-medium mb-0.5 lg:mb-1 ${isToday(day) ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                          {day}
-                        </p>
-                        <div className="space-y-0.5 hidden sm:block">
-                          {items.classes.slice(0, 1).map(({ subject, block }, idx) => (
-                            <div key={`${subject.id}-${idx}`} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 ${subject.color.bg} text-white`}>
-                              <GraduationCap size={9} className="flex-shrink-0" /> {subject.name}
-                            </div>
-                          ))}
-                          {items.assignments.slice(0, 1).map(a => {
-                            const subject = subjects.find(s => s.id === a.subject_id)
-                            return (
-                              <div key={a.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1
-                                ${a.status === 'done' ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
-                                  : subject ? subject.color.bg + ' text-white'
-                                  : 'bg-indigo-600 text-white'}`}>
-                                <FileText size={9} className="flex-shrink-0" /> {a.title}
-                              </div>
-                            )
-                          })}
-                          {items.reminders.slice(0, 1).map(r => (
-                            <div key={r.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1
-                              ${r.is_done ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500' : 'bg-pink-600 text-white'}`}>
-                              <Bell size={9} className="flex-shrink-0" /> {r.title}
-                            </div>
-                          ))}
-                          {items.events.slice(0, 1).map(e => {
-                            const color = EVENT_COLORS[e.color] || EVENT_COLORS.indigo
-                            return (
-                              <div key={e.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 ${color.bg} text-white`}>
-                                <Star size={9} className="flex-shrink-0" /> {e.title}
-                              </div>
-                            )
-                          })}
-                          {items.grades.length > 0 && (
-                            <div className="text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 bg-emerald-600 text-white">
-                              <BarChart3 size={9} className="flex-shrink-0" /> {items.grades.length} grade{items.grades.length > 1 ? 's' : ''}
-                            </div>
-                          )}
-                          {totalItems > 4 && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 px-1">+{totalItems - 4} more</p>
-                          )}
+                    <p className={`text-xs font-medium mb-0.5 lg:mb-1 ${todayCell ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                      {day}
+                    </p>
+                    <div className="space-y-0.5 hidden sm:block">
+                      {items.classes.slice(0, 1).map(({ subject }, idx) => (
+                        <div key={`${subject.id}-${idx}`} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 ${getSubjectColor(subject).bg} text-white`}>
+                          <GraduationCap size={9} aria-hidden="true" className="flex-shrink-0" /> {subject.name}
                         </div>
-                        {/* Mobile dots */}
-                        <div className="flex gap-0.5 flex-wrap sm:hidden mt-0.5">
-                          {items.classes.length > 0     && <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />}
-                          {items.assignments.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />}
-                          {items.reminders.length > 0   && <span className="w-1.5 h-1.5 rounded-full bg-pink-500"   />}
-                          {items.events.length > 0      && <span className="w-1.5 h-1.5 rounded-full bg-amber-500"  />}
-                          {items.grades.length > 0      && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"/>}
+                      ))}
+                      {items.assignments.slice(0, 1).map(a => {
+                        const subject = subjectById[a.subject_id]
+                        return (
+                          <div key={a.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1
+                            ${a.status === 'done' ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                              : subject ? getSubjectColor(subject).bg + ' text-white'
+                              : 'bg-indigo-600 text-white'}`}>
+                            <FileText size={9} aria-hidden="true" className="flex-shrink-0" /> {a.title}
+                          </div>
+                        )
+                      })}
+                      {items.reminders.slice(0, 1).map(r => (
+                        <div key={r.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1
+                          ${r.is_done ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500' : 'bg-pink-600 text-white'}`}>
+                          <Bell size={9} aria-hidden="true" className="flex-shrink-0" /> {r.title}
                         </div>
-                      </>
-                    )}
+                      ))}
+                      {items.events.slice(0, 1).map(e => {
+                        const color = EVENT_COLORS[e.color] || EVENT_COLORS.indigo
+                        return (
+                          <div key={e.id} className={`text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 ${color.bg} text-white`}>
+                            <Star size={9} aria-hidden="true" className="flex-shrink-0" /> {e.title}
+                          </div>
+                        )
+                      })}
+                      {items.grades.length > 0 && (
+                        <div className="text-xs px-1 py-0.5 rounded truncate flex items-center gap-1 bg-emerald-600 text-white">
+                          <BarChart3 size={9} aria-hidden="true" className="flex-shrink-0" /> {items.grades.length} grade{items.grades.length > 1 ? 's' : ''}
+                        </div>
+                      )}
+                      {extra > 0 && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 px-1">+{extra} more</p>
+                      )}
+                    </div>
+                    {/* Mobile dots */}
+                    <div className="flex gap-0.5 flex-wrap sm:hidden mt-0.5" aria-hidden="true">
+                      {items.classes.length > 0     && <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />}
+                      {items.assignments.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />}
+                      {items.reminders.length > 0   && <span className="w-1.5 h-1.5 rounded-full bg-pink-500"   />}
+                      {items.events.length > 0      && <span className="w-1.5 h-1.5 rounded-full bg-amber-500"  />}
+                      {items.grades.length > 0      && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"/>}
+                    </div>
                   </div>
                 )
               })}
@@ -475,11 +611,11 @@ export default function Calendar() {
 
             {/* Legend */}
             <div className="flex gap-4 mt-3 flex-wrap">
-              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-violet-500" /> Classes</div>
-              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-indigo-500" /> Assignments</div>
-              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-pink-500" /> Reminders</div>
-              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Grades</div>
-              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span className="w-2 h-2 rounded-full bg-amber-500" /> Events</div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span aria-hidden="true" className="w-2 h-2 rounded-full bg-violet-500" /> Classes</div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span aria-hidden="true" className="w-2 h-2 rounded-full bg-indigo-500" /> Assignments</div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span aria-hidden="true" className="w-2 h-2 rounded-full bg-pink-500" /> Reminders</div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span aria-hidden="true" className="w-2 h-2 rounded-full bg-emerald-500" /> Grades</div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><span aria-hidden="true" className="w-2 h-2 rounded-full bg-amber-500" /> Events</div>
               <p className="text-xs text-gray-400 dark:text-gray-500 hidden sm:block">Double-click a day to add event</p>
             </div>
           </div>
@@ -503,61 +639,66 @@ export default function Calendar() {
                     <p className="text-gray-500 dark:text-gray-400 text-sm">Nothing on this day.</p>
                   )}
 
-                  {selectedItems.classes.map(({ subject, block }, idx) => (
-                    <div key={`${subject.id}-${idx}`} className={`border rounded-lg p-3 mb-2 ${subject.color.light} ${subject.color.border}`}>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
-                        <GraduationCap size={13} className="flex-shrink-0" /> {subject.name}
-                      </p>
-                      {(block.startTime || block.endTime) && (
-                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 flex items-center gap-1">
-                          <Clock size={11} /> {formatTime(block.startTime)}{block.endTime && ` – ${formatTime(block.endTime)}`}
+                  {selectedItems.classes.map(({ subject, block }, idx) => {
+                    const sc = getSubjectColor(subject)
+                    return (
+                      <div key={`${subject.id}-${idx}`} className={`border rounded-lg p-3 mb-2 ${sc.light} ${sc.border}`}>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5">
+                          <GraduationCap size={13} aria-hidden="true" className="flex-shrink-0" /> {subject.name}
                         </p>
-                      )}
-                      {block.room && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
-                          <MapPin size={11} /> {block.room}
-                        </p>
-                      )}
-                      {subject.professor && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
-                          <User size={11} /> {subject.professor}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                        {(block.startTime || block.endTime) && (
+                          <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 flex items-center gap-1">
+                            <Clock size={11} aria-hidden="true" /> {formatTime(block.startTime)}{block.endTime && ` – ${formatTime(block.endTime)}`}
+                          </p>
+                        )}
+                        {block.room && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
+                            <MapPin size={11} aria-hidden="true" /> {block.room}
+                          </p>
+                        )}
+                        {subject.professor && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
+                            <User size={11} aria-hidden="true" /> {subject.professor}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
 
                   {selectedItems.assignments.map(a => {
-                    const subject = subjects.find(s => s.id === a.subject_id)
+                    const subject = subjectById[a.subject_id]
+                    const sc = getSubjectColor(subject)
                     return (
                       <div key={a.id} className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3 mb-2">
                         <p className={`text-sm font-medium flex items-center gap-1.5 ${a.status === 'done' ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
-                          <FileText size={13} className="flex-shrink-0" /> {a.title}
+                          <FileText size={13} aria-hidden="true" className="flex-shrink-0" /> {a.title}
                         </p>
-                        {a.due_time && <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1"><Clock size={11} /> {formatTime(a.due_time)}</p>}
+                        {a.due_time && <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1"><Clock size={11} aria-hidden="true" /> {formatTime(a.due_time)}</p>}
                         {subject && (
-                          <span className={`text-xs mt-1 inline-block px-2 py-0.5 rounded-full border ${subject.color.light} ${subject.color.border} ${subject.color.text}`}>
+                          <span className={`text-xs mt-1 inline-block px-2 py-0.5 rounded-full border ${sc.light} ${sc.border} ${sc.text}`}>
                             {subject.name}
                           </span>
                         )}
                         <p className={`text-xs mt-1 capitalize flex items-center gap-1 ${a.priority === 'high' ? 'text-red-600 dark:text-red-400' : a.priority === 'medium' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                          {a.priority} priority {a.status === 'done' && <><CheckCircle2 size={11} /> Done</>}
+                          {a.priority} priority {a.status === 'done' && <><CheckCircle2 size={11} aria-hidden="true" /> Done</>}
                         </p>
                       </div>
                     )
                   })}
 
                   {selectedItems.reminders.map(r => {
-                    const subject = subjects.find(s => s.id === r.subject_id)
+                    const subject = subjectById[r.subject_id]
+                    const sc = getSubjectColor(subject)
                     const linkedAssignment = assignments.find(a => a.id === r.assignment_id)
                     return (
                       <div key={r.id} className="bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-900 rounded-lg p-3 mb-2">
                         <p className={`text-sm font-medium flex items-center gap-1.5 ${r.is_done ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
-                          <Bell size={13} className="flex-shrink-0" /> {r.title}
+                          <Bell size={13} aria-hidden="true" className="flex-shrink-0" /> {r.title}
                         </p>
-                        {r.due_time && <p className="text-xs text-pink-600 dark:text-pink-400 mt-0.5 flex items-center gap-1"><Clock size={11} /> {formatTime(r.due_time)}</p>}
+                        {r.due_time && <p className="text-xs text-pink-600 dark:text-pink-400 mt-0.5 flex items-center gap-1"><Clock size={11} aria-hidden="true" /> {formatTime(r.due_time)}</p>}
                         <div className="flex flex-wrap items-center gap-1.5 mt-1">
                           {subject && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full border ${subject.color.light} ${subject.color.border} ${subject.color.text}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded-full border ${sc.light} ${sc.border} ${sc.text}`}>
                               {subject.name}
                             </span>
                           )}
@@ -568,7 +709,7 @@ export default function Calendar() {
                           )}
                         </div>
                         <p className={`text-xs mt-1 capitalize flex items-center gap-1 ${r.priority === 'high' ? 'text-red-600 dark:text-red-400' : r.priority === 'medium' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                          {r.priority} priority {r.is_done && <><CheckCircle2 size={11} /> Done</>}
+                          {r.priority} priority {r.is_done && <><CheckCircle2 size={11} aria-hidden="true" /> Done</>}
                         </p>
                       </div>
                     )
@@ -579,7 +720,7 @@ export default function Calendar() {
                     const pct = g.max_score > 0 ? ((g.score / g.max_score) * 100).toFixed(1) : '0.0'
                     return (
                       <div key={g.id} className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3 mb-2">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5"><BarChart3 size={13} /> {g.title}</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5"><BarChart3 size={13} aria-hidden="true" /> {g.title}</p>
                         <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{g.score}/{g.max_score} — {pct}%</p>
                       </div>
                     )
@@ -589,15 +730,21 @@ export default function Calendar() {
                     const color = EVENT_COLORS[e.color] || EVENT_COLORS.indigo
                     return (
                       <div key={e.id} className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3 mb-2 group">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5"><Star size={13} /> {e.title}</p>
-                          {/* Fix: opens confirm modal instead of inline delete */}
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-1.5 min-w-0">
+                            <Star size={13} aria-hidden="true" className="flex-shrink-0" /> <span className="truncate">{e.title}</span>
+                          </p>
+                          {/* Opens the confirm modal. Hover-reveal only where hover exists;
+                              always visible on touch, and visible on keyboard focus. */}
                           <button
-                            onClick={() => { setError(''); setConfirmDelete(e) }}
-                            className="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                          ><X size={14} /></button>
+                            onClick={() => { setDeleteError(''); setConfirmDelete(e) }}
+                            aria-label={`Delete event ${e.title}`}
+                            className="p-1 -m-1 flex-shrink-0 rounded text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 transition-colors
+                              [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100
+                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                          ><X size={14} aria-hidden="true" /></button>
                         </div>
-                        {e.time && <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1"><Clock size={11} /> {formatTime(e.time)}</p>}
+                        {e.time && <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1"><Clock size={11} aria-hidden="true" /> {formatTime(e.time)}</p>}
                         <p className={`text-xs mt-1 capitalize ${color.text}`}>{e.type}</p>
                       </div>
                     )
@@ -608,23 +755,26 @@ export default function Calendar() {
                   {todaysClasses.length > 0 && (
                     <div className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
                       <h3 className="text-gray-900 dark:text-white font-semibold mb-3 flex items-center gap-1.5">
-                        <GraduationCap size={15} /> Today's Classes
+                        <GraduationCap size={15} aria-hidden="true" /> Today's Classes
                       </h3>
-                      {todaysClasses.map(({ subject, block }, idx) => (
-                        <div key={`${subject.id}-${idx}`} className={`border rounded-lg p-3 mb-2 last:mb-0 ${subject.color.light} ${subject.color.border}`}>
-                          <p className="text-sm font-medium text-gray-900 dark:text-white">{subject.name}</p>
-                          {(block.startTime || block.endTime) && (
-                            <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 flex items-center gap-1">
-                              <Clock size={11} /> {formatTime(block.startTime)}{block.endTime && ` – ${formatTime(block.endTime)}`}
-                            </p>
-                          )}
-                          {block.room && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
-                              <MapPin size={11} /> {block.room}
-                            </p>
-                          )}
-                        </div>
-                      ))}
+                      {todaysClasses.map(({ subject, block }, idx) => {
+                        const sc = getSubjectColor(subject)
+                        return (
+                          <div key={`${subject.id}-${idx}`} className={`border rounded-lg p-3 mb-2 last:mb-0 ${sc.light} ${sc.border}`}>
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">{subject.name}</p>
+                            {(block.startTime || block.endTime) && (
+                              <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 flex items-center gap-1">
+                                <Clock size={11} aria-hidden="true" /> {formatTime(block.startTime)}{block.endTime && ` – ${formatTime(block.endTime)}`}
+                              </p>
+                            )}
+                            {block.room && (
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
+                                <MapPin size={11} aria-hidden="true" /> {block.room}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
 
@@ -632,15 +782,15 @@ export default function Calendar() {
                   {upcomingItems.length === 0 && (
                     <p className="text-gray-500 dark:text-gray-400 text-sm">Nothing upcoming.</p>
                   )}
-                  {upcomingItems.map((item, i) => {
+                  {upcomingItems.map(item => {
                     const ItemIcon = item.type === 'assignment' ? FileText : item.type === 'reminder' ? Bell : Star
                     return (
-                      <div key={i} className="mb-2 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3">
+                      <div key={item.key} className="mb-2 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg p-3">
                         <p className="text-sm text-gray-900 dark:text-white font-medium flex items-center gap-1.5">
-                          <ItemIcon size={13} className="flex-shrink-0" /> {item.label}
+                          <ItemIcon size={13} aria-hidden="true" className="flex-shrink-0" /> {item.label}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                          {new Date(item.date).toLocaleDateString()}
+                          {formatDateStr(item.date)}
                           {item.time && ` · ${formatTime(item.time)}`}
                         </p>
                       </div>
@@ -654,65 +804,78 @@ export default function Calendar() {
 
         {/* Add Event Modal */}
         {showModal && (
-          // Fix: backdrop click closes modal
+          // Fix: backdrop click closes modal (unless saving)
           <div
             className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            onClick={(e) => e.target === e.currentTarget && setShowModal(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-event-title"
+            onClick={(e) => e.target === e.currentTarget && !saving && setShowModal(false)}
           >
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
-              <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Add Event</h3>
+              <h3 id="add-event-title" className="text-gray-900 dark:text-white font-semibold text-lg">Add Event</h3>
 
               <div>
-                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Title</label>
+                <label htmlFor="event-title" className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Title</label>
                 <input
+                  id="event-title"
                   autoFocus
                   value={form.title}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  onKeyDown={e => e.key === 'Enter' && handleAddEvent()}
+                  onKeyDown={e => {
+                    // isComposing guard: don't submit while an IME is mid-composition
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleAddEvent()
+                  }}
                   placeholder="e.g. Final Exam"
-                  className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
+                  className={inputCls}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Date</label>
+                  <label htmlFor="event-date" className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Date</label>
                   <input
+                    id="event-date"
                     type="date"
                     value={form.date}
                     onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                    className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
+                    className={inputCls}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Time (optional)</label>
+                  <label htmlFor="event-time" className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Time (optional)</label>
                   <input
+                    id="event-time"
                     type="time"
                     value={form.time}
                     onChange={e => setForm(f => ({ ...f, time: e.target.value }))}
-                    className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
+                    className={inputCls}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Type</label>
+                <label htmlFor="event-type" className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Type</label>
                 <select
+                  id="event-type"
                   value={form.type}
                   onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-                  className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/40 transition"
+                  className={inputCls}
                 >
                   {EVENT_TYPES.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">Color</label>
-                <div className="flex gap-2">
+                <span id="event-color-label" className="block text-sm text-gray-500 dark:text-gray-400 mb-2">Color</span>
+                <div className="flex gap-2" role="group" aria-labelledby="event-color-label">
                   {Object.entries(EVENT_COLORS).map(([key, val]) => (
                     <button
                       key={key}
+                      type="button"
                       onClick={() => setForm(f => ({ ...f, color: key }))}
+                      aria-label={key}
+                      aria-pressed={form.color === key}
                       className={`w-7 h-7 rounded-full ${val.bg} ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-800 transition
                         ${form.color === key ? 'ring-gray-900 dark:ring-white scale-110' : 'ring-transparent hover:ring-gray-300 dark:hover:ring-gray-600'}`}
                     />
@@ -720,7 +883,7 @@ export default function Calendar() {
                 </div>
               </div>
 
-              {error && <p className="text-red-600 dark:text-red-400 text-xs">{error}</p>}
+              {formError && <p role="alert" className="text-red-600 dark:text-red-400 text-xs">{formError}</p>}
 
               <div className="flex gap-3 pt-1">
                 <button
@@ -747,22 +910,26 @@ export default function Calendar() {
         {confirmDelete && (
           <div
             className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-event-title"
+            onClick={(e) => e.target === e.currentTarget && !deleting && setConfirmDelete(null)}
           >
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-xl">
               <div className="text-center">
                 <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center justify-center mx-auto mb-3">
-                  <Trash2 size={20} className="text-red-500 dark:text-red-400" />
+                  <Trash2 size={20} aria-hidden="true" className="text-red-500 dark:text-red-400" />
                 </div>
-                <h3 className="text-gray-900 dark:text-white font-semibold text-lg">Delete Event?</h3>
+                <h3 id="delete-event-title" className="text-gray-900 dark:text-white font-semibold text-lg">Delete Event?</h3>
                 <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
                   Are you sure you want to delete{' '}
                   <span className="text-gray-900 dark:text-white font-medium">"{confirmDelete.title}"</span>? This cannot be undone.
                 </p>
-                {error && <p className="text-red-600 dark:text-red-400 text-xs mt-2">{error}</p>}
+                {deleteError && <p role="alert" className="text-red-600 dark:text-red-400 text-xs mt-2">{deleteError}</p>}
               </div>
               <div className="flex gap-3">
                 <button
+                  autoFocus
                   onClick={() => setConfirmDelete(null)}
                   disabled={deleting}
                   className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-40"

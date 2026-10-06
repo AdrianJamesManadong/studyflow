@@ -59,21 +59,43 @@ const C_DARK = {
 };
 
 /* ─── Shared gradient-text style ────────────────────────────────────
-   Both the standard and Webkit-prefixed background-clip properties
-   are required — some renderers ignore the unprefixed one, others
-   ignore the prefixed one. Without both plus the transparent color
-   fallback, the gradient paints as a solid block instead of being
-   clipped to the text shape.                                        */
+   BUG FIX: this used the `background` SHORTHAND. The shorthand resets
+   `background-clip` back to its initial value (border-box). React only
+   re-applies style props whose value changed, so on a theme toggle the
+   palette changed -> `background` was re-set (resetting the clip) while
+   `backgroundClip: "text"` was unchanged and never re-applied. Result:
+   the gradient painted as a solid block behind transparent text.
+   Using the `backgroundImage` LONGHAND never touches background-clip,
+   so the clip survives every re-render.
+
+   Other details:
+   - Both the standard and -webkit- clip props are set (some engines
+     only honour one of them).
+   - `color` is a solid fallback for engines without text-clipping;
+     `-webkit-text-fill-color: transparent` hides it wherever clipping
+     works. (Before, `color: transparent` meant unsupported engines
+     rendered invisible text.)
+   - Tiny bottom padding + matching negative margin stops descenders
+     (the "y" and "g") from being clipped by the inline-block box
+     without changing the layout.                                      */
 const gradientText = (C) => ({
-  background: `linear-gradient(105deg,${C.indigo},${C.violet})`,
+  backgroundImage: `linear-gradient(105deg,${C.indigo},${C.violet})`,
   WebkitBackgroundClip: "text",
   backgroundClip: "text",
   WebkitTextFillColor: "transparent",
-  color: "transparent",
+  color: C.indigo,
   display: "inline-block",
+  paddingBottom: "0.08em",
+  marginBottom: "-0.08em",
 });
 
 /* ─── Data ──────────────────────────────────────────────────────── */
+
+// One source of truth for the user-count claim. Before, the hero said
+// "Trusted by 500+ students" while the stats card said "10+ Students" —
+// the page contradicted itself. Update this ONE value to the real number.
+const STUDENT_COUNT = "10+";
+
 const FEATURES = [
   { icon: FolderKanban,  label: "Subjects",      desc: "Colour-coded courses with instant access to all your materials." },
   { icon: ClipboardList, label: "Assignments",   desc: "Track tasks, deadlines, and statuses — nothing slips through." },
@@ -92,7 +114,7 @@ const PROMOS = [
 ];
 
 const STATS = [
-  { value: "10+",  label: "Students", icon: GraduationCap },
+  { value: STUDENT_COUNT, label: "Students", icon: GraduationCap },
   { value: "8",    label: "Tools in one", icon: LayoutGrid },
   { value: "100%", label: "Free forever", icon: Gift },
   { value: "24/7", label: "AI available", icon: Bot },
@@ -121,29 +143,46 @@ function useInView(threshold = 0.1) {
   const ref = useRef(null);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
+    const el = ref.current;
+    // No observer support (or nothing to observe): just show the content
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
     const obs = new IntersectionObserver(
       ([e]) => { if (e.isIntersecting) { setVisible(true); obs.disconnect(); } },
       { threshold }
     );
-    if (ref.current) obs.observe(ref.current);
+    obs.observe(el);
     return () => obs.disconnect();
   }, [threshold]);
   return [ref, visible];
 }
 
+// Reads the breakpoint synchronously on first render (no desktop-layout
+// flash on phones) and then follows it via matchMedia instead of a
+// resize listener firing on every pixel.
+const MOBILE_QUERY = "(max-width: 767px)";
 function useIsMobile() {
-  const [mobile, setMobile] = useState(false);
+  const [mobile, setMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(MOBILE_QUERY).matches
+  );
   useEffect(() => {
-    const check = () => setMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
+    const mq = window.matchMedia(MOBILE_QUERY);
+    const onChange = e => setMobile(e.matches);
+    setMobile(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
   }, []);
   return mobile;
 }
 
 /* ─── Helpers ───────────────────────────────────────────────────── */
-const scrollTo = id => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const scrollTo = id =>
+  document.getElementById(id)?.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth" });
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -177,14 +216,14 @@ function FeatureCard({ feature, visible, delay, C }) {
         cursor: "default",
       }}
     >
-      <div style={{ marginBottom: 12 }}><Icon size={24} color={C.indigoFg} strokeWidth={1.8} /></div>
+      <div style={{ marginBottom: 12 }}><Icon size={24} color={C.indigoFg} strokeWidth={1.8} aria-hidden="true" /></div>
       <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 6 }}>{feature.label}</div>
       <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6 }}>{feature.desc}</div>
     </div>
   );
 }
 
-/* ─── Mini dashboard mock ───────────────────────────────────────── */
+/* ─── Mini dashboard mock (decorative — hidden from screen readers) ─── */
 function DashboardMock({ mobile, C }) {
   const cards = [
     { icon: FolderKanban,  val: "5",   label: "SUBJECTS",   color: C.indigo },
@@ -204,7 +243,7 @@ function DashboardMock({ mobile, C }) {
   ];
 
   return (
-    <div style={{
+    <div aria-hidden="true" style={{
       background: C.surface,
       border: `1px solid ${C.border}`,
       borderRadius: 16,
@@ -300,28 +339,44 @@ export default function Home() {
   useEffect(() => {
     const t = setTimeout(() => setHeroVis(true), 80);
     const onScroll = () => setScrolled(window.scrollY > 40);
-    window.addEventListener("scroll", onScroll);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => { clearTimeout(t); window.removeEventListener("scroll", onScroll); };
   }, []);
 
   // close menu on resize to desktop
   useEffect(() => { if (!mobile) setMenuOpen(false); }, [mobile]);
 
+  // While the mobile menu is open: lock page scroll and let Escape close it
+  useEffect(() => {
+    if (!menuOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = e => { if (e.key === "Escape") setMenuOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
   const navHandle = (id) => { scrollTo(id); setMenuOpen(false); };
 
   // colors used by PROMOS cards are keyed by name so they can follow the theme
   const promoColor = { indigo: C.indigo, emerald: C.emerald, amber: C.amber };
 
+  const themeLabel = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
+
   return (
     <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", background: C.bg, color: C.text, minHeight: "100vh", overflowX: "hidden", position: "relative", transition: "background .3s, color .3s" }}>
 
-      {/* ── ambient blobs ── */}
-      <div style={{ position:"fixed", top:"-20%", left:"-15%", width: mobile?320:600, height: mobile?320:600, borderRadius:"50%", background:`radial-gradient(circle,${C.indigo}14,transparent 70%)`, pointerEvents:"none", zIndex:0 }} />
-      <div style={{ position:"fixed", top:"50%", right:"-15%", width: mobile?240:480, height: mobile?240:480, borderRadius:"50%", background:`radial-gradient(circle,${C.violet}12,transparent 70%)`, pointerEvents:"none", zIndex:0 }} />
-      <div style={{ position:"fixed", bottom:"5%", left:"25%", width: mobile?200:360, height: mobile?200:360, borderRadius:"50%", background:`radial-gradient(circle,${C.accent}10,transparent 70%)`, pointerEvents:"none", zIndex:0 }} />
+      {/* ── ambient blobs (decorative) ── */}
+      <div aria-hidden="true" style={{ position:"fixed", top:"-20%", left:"-15%", width: mobile?320:600, height: mobile?320:600, borderRadius:"50%", background:`radial-gradient(circle,${C.indigo}14,transparent 70%)`, pointerEvents:"none", zIndex:0 }} />
+      <div aria-hidden="true" style={{ position:"fixed", top:"50%", right:"-15%", width: mobile?240:480, height: mobile?240:480, borderRadius:"50%", background:`radial-gradient(circle,${C.violet}12,transparent 70%)`, pointerEvents:"none", zIndex:0 }} />
+      <div aria-hidden="true" style={{ position:"fixed", bottom:"5%", left:"25%", width: mobile?200:360, height: mobile?200:360, borderRadius:"50%", background:`radial-gradient(circle,${C.accent}10,transparent 70%)`, pointerEvents:"none", zIndex:0 }} />
 
       {/* ── NAV ── */}
-      <nav style={{
+      <nav aria-label="Main" style={{
         position:"fixed", top:0, left:0, right:0, zIndex:300,
         display:"flex", alignItems:"center", justifyContent:"space-between",
         padding: mobile ? "14px 20px" : "16px 52px",
@@ -342,10 +397,11 @@ export default function Home() {
             <button style={navBtn(C)} onClick={() => scrollTo("about")}>About</button>
             <button
               onClick={toggleTheme}
-              aria-label="Toggle dark mode"
-              style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:C.muted, transition:"border-color .2s, color .2s" }}
+              aria-label={themeLabel}
+              title={themeLabel}
+              style={themeToggle(C, 34)}
             >
-              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+              {theme === "dark" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
             </button>
             <button style={{ ...navBtn(C), border:`1px solid ${C.border}`, borderRadius:7, padding:"7px 15px" }} onClick={() => navigate("/login")}>Sign In</button>
             <button style={{ background:C.indigo, color:"#fff", border:"none", borderRadius:8, padding:"9px 20px", fontSize:13, fontWeight:600, cursor:"pointer" }} onClick={() => navigate("/register")}>
@@ -359,17 +415,25 @@ export default function Home() {
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <button
               onClick={toggleTheme}
-              aria-label="Toggle dark mode"
-              style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:C.muted }}
+              aria-label={themeLabel}
+              title={themeLabel}
+              style={themeToggle(C, 32)}
             >
-              {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+              {theme === "dark" ? <Sun size={15} aria-hidden="true" /> : <Moon size={15} aria-hidden="true" />}
             </button>
-            <button onClick={() => setMenuOpen(o => !o)} style={{ background:"none", border:"none", cursor:"pointer", padding:4, display:"flex", flexDirection:"column", gap:5 }}>
+            <button
+              onClick={() => setMenuOpen(o => !o)}
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={menuOpen}
+              aria-controls="mobile-menu"
+              style={{ background:"none", border:"none", cursor:"pointer", padding:4, display:"flex", flexDirection:"column", gap:5 }}
+            >
               {[0,1,2].map(i => (
-                <span key={i} style={{
+                <span key={i} aria-hidden="true" style={{
                   display:"block", width:22, height:2, borderRadius:2,
                   background: C.textSoft,
-                  transform: menuOpen && i===0 ? "rotate(45deg) translate(5px,5px)" : menuOpen && i===1 ? "scaleX(0)" : menuOpen && i===2 ? "rotate(-45deg) translate(5px,-5px)" : "none",
+                  // bars are 2px tall with a 5px gap -> centres are 7px apart
+                  transform: menuOpen && i===0 ? "translateY(7px) rotate(45deg)" : menuOpen && i===1 ? "scaleX(0)" : menuOpen && i===2 ? "translateY(-7px) rotate(-45deg)" : "none",
                   transition:"transform .25s",
                 }} />
               ))}
@@ -380,354 +444,376 @@ export default function Home() {
 
       {/* ── mobile drawer ── */}
       {mobile && (
-        <div style={{
-          position:"fixed", top:0, left:0, right:0, zIndex:250,
-          background:C.drawerBg, backdropFilter:"blur(28px)",
-          borderBottom:`1px solid ${C.border}`,
-          padding:"72px 24px 28px",
-          transform: menuOpen ? "translateY(0)" : "translateY(-110%)",
-          transition:"transform .35s cubic-bezier(.4,0,.2,1)",
-          display:"flex", flexDirection:"column", gap:4,
-          boxShadow: menuOpen ? `0 16px 40px ${C.shadowSoft}` : "none",
-        }}>
-          {[["features","Features"],["whyus","Why Us"],["about","About"]].map(([id,label]) => (
-            <button key={id} style={{ background:"none", border:"none", cursor:"pointer", fontSize:18, color:C.text, fontWeight:600, padding:"12px 0", textAlign:"left", borderBottom:`1px solid ${C.border}` }} onClick={() => navHandle(id)}>{label}</button>
-          ))}
-          <div style={{ display:"flex", gap:10, marginTop:16 }}>
-            <button style={{ flex:1, background:C.surface2, border:`1px solid ${C.border}`, borderRadius:10, padding:"13px", fontSize:15, color:C.textSoft, cursor:"pointer", fontFamily:"'Plus Jakarta Sans',sans-serif" }} onClick={() => { navigate("/login"); setMenuOpen(false); }}>Sign In</button>
-            <button style={{ flex:2, background:C.indigo, border:"none", borderRadius:10, padding:"13px", fontSize:15, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"'Plus Jakarta Sans',sans-serif" }} onClick={() => { navigate("/register"); setMenuOpen(false); }}>Get Started Free</button>
+        <>
+          {/* tap outside to close */}
+          {menuOpen && (
+            <div
+              aria-hidden="true"
+              onClick={() => setMenuOpen(false)}
+              style={{ position:"fixed", inset:0, zIndex:200, background:"rgba(0,0,0,.35)" }}
+            />
+          )}
+          <div
+            id="mobile-menu"
+            aria-hidden={!menuOpen}
+            style={{
+              position:"fixed", top:0, left:0, right:0, zIndex:250,
+              background:C.drawerBg, backdropFilter:"blur(28px)",
+              borderBottom:`1px solid ${C.border}`,
+              padding:"72px 24px 28px",
+              transform: menuOpen ? "translateY(0)" : "translateY(-110%)",
+              // `visibility` flips after the slide-out finishes, so the closed
+              // drawer's links can't be reached with Tab while off-screen.
+              visibility: menuOpen ? "visible" : "hidden",
+              transition: menuOpen
+                ? "transform .35s cubic-bezier(.4,0,.2,1), visibility 0s"
+                : "transform .35s cubic-bezier(.4,0,.2,1), visibility 0s linear .35s",
+              display:"flex", flexDirection:"column", gap:4,
+              boxShadow: menuOpen ? `0 16px 40px ${C.shadowSoft}` : "none",
+            }}
+          >
+            {[["features","Features"],["whyus","Why Us"],["about","About"]].map(([id,label]) => (
+              <button key={id} style={{ background:"none", border:"none", cursor:"pointer", fontSize:18, color:C.text, fontWeight:600, padding:"12px 0", textAlign:"left", borderBottom:`1px solid ${C.border}` }} onClick={() => navHandle(id)}>{label}</button>
+            ))}
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+              <button style={{ flex:1, background:C.surface2, border:`1px solid ${C.border}`, borderRadius:10, padding:"13px", fontSize:15, color:C.textSoft, cursor:"pointer", fontFamily:"'Plus Jakarta Sans',sans-serif" }} onClick={() => { navigate("/login"); setMenuOpen(false); }}>Sign In</button>
+              <button style={{ flex:2, background:C.indigo, border:"none", borderRadius:10, padding:"13px", fontSize:15, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"'Plus Jakarta Sans',sans-serif" }} onClick={() => { navigate("/register"); setMenuOpen(false); }}>Get Started Free</button>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
-      {/* ── HERO ── */}
-      <section style={{
-        position:"relative", zIndex:1,
-        display:"flex", flexDirection: mobile ? "column" : "row",
-        alignItems:"center", justifyContent:"space-between",
-        gap: mobile ? 40 : 52,
-        maxWidth:1300, margin:"0 auto",
-        padding: mobile ? "108px 20px 60px" : "140px 52px 100px",
-      }}>
-        {/* copy */}
-        <div style={{
-          flex:"0 0 auto", maxWidth: mobile ? "100%" : 500,
-          opacity: heroVis ? 1 : 0,
-          transform: heroVis ? "translateY(0)" : "translateY(28px)",
-          transition:"opacity .8s ease, transform .8s ease",
-          textAlign: mobile ? "center" : "left",
+      <main>
+        {/* ── HERO ── */}
+        <section style={{
+          position:"relative", zIndex:1,
+          display:"flex", flexDirection: mobile ? "column" : "row",
+          alignItems:"center", justifyContent:"space-between",
+          gap: mobile ? 40 : 52,
+          maxWidth:1300, margin:"0 auto",
+          padding: mobile ? "108px 20px 60px" : "140px 52px 100px",
         }}>
-          <div style={eyebrow(C)}><Sparkles size={11} /> Academic Command Center</div>
-          <h1 style={{ fontSize: mobile ? 38 : 62, fontWeight:800, lineHeight:1.06, letterSpacing:"-2px", marginBottom:18, color: C.text }}>
-            Your studies,<br />
-            <span style={gradientText(C)}>
-              finally organised.
-            </span>
-          </h1>
-          <p style={{ fontSize: mobile ? 15 : 16, color:C.muted, lineHeight:1.75, marginBottom: mobile ? 28 : 32, maxWidth:460 }}>
-            StudyFlow unifies subjects, assignments, grades, notes, calendar, Pomodoro timer, and an AI assistant — one focused workspace built for students who mean business.
-          </p>
-          <div style={{ display:"flex", gap:10, flexWrap:"wrap", justifyContent: mobile ? "center" : "flex-start", marginBottom:24 }}>
-            <button style={{ background:C.indigo, color:"#fff", border:"none", borderRadius:10, padding: mobile ? "14px 28px" : "13px 28px", fontSize:15, fontWeight:700, cursor:"pointer", width: mobile ? "100%" : "auto", boxShadow:`0 10px 24px ${C.indigo}30` }} onClick={() => navigate("/register")}>
-              Start for Free →
-            </button>
-            <button style={{ background:"transparent", color:C.muted, border:`1px solid ${C.border}`, borderRadius:10, padding: mobile ? "14px 24px" : "13px 24px", fontSize:15, cursor:"pointer", width: mobile ? "100%" : "auto", fontFamily:"'Plus Jakarta Sans',sans-serif" }} onClick={() => navigate("/login")}>
-              I have an account
-            </button>
-          </div>
-          {/* proof tags */}
-          <div style={{ display:"flex", gap:7, flexWrap:"wrap", justifyContent: mobile ? "center" : "flex-start", marginBottom:14 }}>
-            {[
-              { icon: BarChart3, label: "Grades" },
-              { icon: Timer, label: "Pomodoro" },
-              { icon: Bot, label: "AI" },
-              { icon: CalendarDays, label: "Calendar" },
-            ].map(t => {
-              const TIcon = t.icon;
-              return (
-                <span key={t.label} style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:11, color:C.indigoFg, background:`${C.indigo}12`, border:`1px solid ${C.indigo}24`, borderRadius:6, padding:"4px 9px" }}>
-                  <TIcon size={12} /> {t.label}
-                </span>
-              );
-            })}
-          </div>
-          {/* social proof */}
-          <div style={{ display:"flex", alignItems:"center", gap:6, justifyContent: mobile ? "center" : "flex-start" }}>
-            {[0,1,2].map(i => <span key={i} style={{ width:7, height:7, borderRadius:"50%", background:C.emerald, boxShadow:`0 0 7px ${C.emerald}77` }} />)}
-            <span style={{ fontSize:12, color:C.muted }}>Trusted by 500+ students</span>
-          </div>
-        </div>
-
-        {/* visual */}
-        <div style={{
-          flex:"1 1 auto", maxWidth: mobile ? "100%" : 680, minWidth:0, position:"relative",
-          opacity: heroVis ? 1 : 0,
-          transform: heroVis
-            ? mobile ? "translateY(0)" : "perspective(1100px) rotateY(-3deg) rotateX(2deg)"
-            : mobile ? "translateY(24px)" : "perspective(1100px) rotateY(-3deg) rotateX(2deg) translateY(30px)",
-          transition:"opacity 1s ease .2s, transform 1s ease .2s",
-        }}>
-          <DashboardMock mobile={mobile} C={C} />
-          {/* floating badge — top */}
-          <div className="badge-float" style={{
-            position:"absolute", top: mobile ? -14 : -20, right: mobile ? 8 : 16,
-            display:"flex", alignItems:"center", gap:9,
-            background:C.surface, border:`1px solid ${C.border}`,
-            borderRadius:10, padding:"9px 12px",
-            boxShadow:`0 10px 28px ${C.indigo}29`,
-          }}>
-            <Timer size={17} color={C.emerald} strokeWidth={2} />
-            <div>
-              <div style={{ fontSize:10, fontWeight:700, color:C.text }}>Focus session</div>
-              <div style={{ fontSize:9, color:C.emerald }}>25:00 remaining</div>
-            </div>
-          </div>
-          {/* floating badge — bottom */}
-          <div className="badge-slidein" style={{
-            position:"absolute", bottom: mobile ? -14 : -18, left: mobile ? 8 : 16,
-            display:"flex", alignItems:"center", gap:9,
-            background:C.surface, border:`1px solid ${C.border}`,
-            borderRadius:10, padding:"9px 12px",
-            boxShadow:`0 10px 28px ${C.violet}29`,
-          }}>
-            <PartyPopper size={17} color={C.indigoFg} strokeWidth={2} />
-            <div>
-              <div style={{ fontSize:10, fontWeight:700, color:C.text }}>Assignment submitted!</div>
-              <div style={{ fontSize:9, color:C.indigoFg }}>Math Problem Set · just now</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── DIVIDER ── */}
-      <div style={{ position:"relative", zIndex:1, textAlign:"center", padding: mobile ? "22px 20px" : "30px 48px", borderTop:`1px solid ${C.border}`, borderBottom:`1px solid ${C.border}`, background:C.surface }}>
-        <span style={{ fontSize: mobile ? 12 : 13, color:C.muted, letterSpacing:"0.5px" }}>Everything a student needs, nothing they don't.</span>
-      </div>
-
-      {/* ── FEATURES ── */}
-      <section id="features" ref={featRef} style={{ position:"relative", zIndex:1, maxWidth:1200, margin:"0 auto", padding: mobile ? "64px 20px" : "96px 52px" }}>
-        <div style={{ textAlign:"center", marginBottom: mobile ? 40 : 60 }}>
-          <p style={sectionEye(C)}>All your tools</p>
-          <h2 style={{ fontSize: mobile ? 30 : 42, fontWeight:800, letterSpacing:"-1.2px", marginBottom:12, color: C.text }}>One app. Every tool.</h2>
-          <p style={{ fontSize:14, color:C.muted, maxWidth:380, margin:"0 auto", lineHeight:1.7 }}>From planning your week to acing your exams — StudyFlow has it covered.</p>
-        </div>
-        <div style={{
-          display:"grid",
-          gridTemplateColumns: mobile ? "1fr 1fr" : "repeat(4,1fr)",
-          gap: mobile ? 10 : 14,
-        }}>
-          {FEATURES.map((f,i) => <FeatureCard key={f.label} feature={f} visible={featVis} delay={i * .055} C={C} />)}
-        </div>
-      </section>
-
-      {/* ── WHY US ── */}
-      <section id="whyus" ref={promoRef} style={{ position:"relative", zIndex:1, maxWidth:1100, margin:"0 auto", padding: mobile ? "0 20px 64px" : "0 52px 96px" }}>
-        <div style={{ textAlign:"center", marginBottom: mobile ? 36 : 56 }}>
-          <p style={sectionEye(C)}>Why StudyFlow</p>
-          <h2 style={{ fontSize: mobile ? 30 : 42, fontWeight:800, letterSpacing:"-1.2px", marginBottom:12, color: C.text }}>Built different.</h2>
-          <p style={{ fontSize:14, color:C.muted, maxWidth:340, margin:"0 auto", lineHeight:1.7 }}>No fluff, no paywalls — the tools that actually help you study.</p>
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns: mobile ? "1fr" : "repeat(3,1fr)", gap: mobile ? 12 : 18 }}>
-          {PROMOS.map((p,i) => {
-            const PIcon = p.icon;
-            const pColor = promoColor[p.color];
-            return (
-              <div key={p.tag} style={{
-                position:"relative", overflow:"hidden",
-                background:C.surface, borderRadius:16,
-                border:`1px solid ${promoVis ? pColor+"2e" : C.border}`,
-                padding: mobile ? "24px 20px" : "30px 24px",
-                display:"flex", flexDirection: mobile ? "row" : "column",
-                alignItems: mobile ? "flex-start" : "flex-start",
-                gap: mobile ? 16 : 14,
-                opacity: promoVis ? 1 : 0,
-                transform: promoVis ? "translateY(0)" : "translateY(22px)",
-                boxShadow: `0 1px 2px ${C.shadowSoft}`,
-                transition:`opacity .5s ease ${i*.1}s, transform .5s ease ${i*.1}s, border-color .5s ease ${i*.1}s`,
-              }}>
-                {/* glow */}
-                <div style={{ position:"absolute", inset:0, background:`radial-gradient(ellipse at top left,${pColor}0c,transparent 65%)`, pointerEvents:"none" }} />
-                <div style={{ width:46, height:46, borderRadius:12, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", background:`${pColor}15`, border:`1px solid ${pColor}28` }}>
-                  <PIcon size={22} color={pColor} strokeWidth={1.8} />
-                </div>
-                <div>
-                  <div style={{ fontSize:10, fontWeight:700, letterSpacing:"1px", textTransform:"uppercase", color:pColor, background:`${pColor}14`, border:`1px solid ${pColor}28`, borderRadius:5, padding:"3px 8px", display:"inline-block", marginBottom:8 }}>{p.tag}</div>
-                  <h3 style={{ fontSize: mobile ? 16 : 17, fontWeight:700, color:C.text, marginBottom:6 }}>{p.title}</h3>
-                  <p style={{ fontSize:13, color:C.muted, lineHeight:1.65 }}>{p.desc}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── ABOUT ── */}
-      <section id="about" ref={aboutRef} style={{
-        position:"relative", zIndex:1,
-        borderTop:`1px solid ${C.border}`,
-        background: C.surface,
-        padding: mobile ? "64px 20px" : "96px 52px",
-        overflow:"hidden",
-      }}>
-        {/* subtle background glow */}
-        <div style={{ position:"absolute", top:"30%", right:"-10%", width:500, height:400, borderRadius:"50%", background:`radial-gradient(circle,${C.violet}0a,transparent 65%)`, pointerEvents:"none" }} />
-        <div style={{ position:"absolute", bottom:"10%", left:"-5%", width:400, height:300, borderRadius:"50%", background:`radial-gradient(circle,${C.indigo}08,transparent 65%)`, pointerEvents:"none" }} />
-
-        <div style={{ maxWidth:1100, margin:"0 auto", position:"relative" }}>
-
-          {/* header */}
+          {/* copy */}
           <div style={{
-            textAlign:"center", marginBottom: mobile ? 48 : 72,
-            opacity: aboutVis ? 1 : 0,
-            transform: aboutVis ? "translateY(0)" : "translateY(20px)",
-            transition:"opacity .6s ease, transform .6s ease",
+            flex:"0 0 auto", maxWidth: mobile ? "100%" : 500,
+            opacity: heroVis ? 1 : 0,
+            transform: heroVis ? "translateY(0)" : "translateY(28px)",
+            transition:"opacity .8s ease, transform .8s ease",
+            textAlign: mobile ? "center" : "left",
           }}>
-            <p style={sectionEye(C)}>About StudyFlow</p>
-            <h2 style={{ fontSize: mobile ? 30 : 42, fontWeight:800, letterSpacing:"-1.2px", marginBottom:16, color: C.text }}>
-              Made by a student,<br />
+            <div style={eyebrow(C)}><Sparkles size={11} aria-hidden="true" /> Academic Command Center</div>
+            <h1 style={{ fontSize: mobile ? 38 : 62, fontWeight:800, lineHeight:1.06, letterSpacing:"-2px", marginBottom:18, color: C.text }}>
+              Your studies,<br />
               <span style={gradientText(C)}>
-                for every student.
+                finally organised.
               </span>
-            </h2>
-            <p style={{ fontSize: mobile ? 14 : 15, color:C.muted, maxWidth:520, margin:"0 auto", lineHeight:1.8 }}>
-              StudyFlow started as a frustration. Juggling five different apps — a planner here, a grade tracker there, sticky notes everywhere — was exhausting. So we built one thing that does it all, done right.
+            </h1>
+            <p style={{ fontSize: mobile ? 15 : 16, color:C.muted, lineHeight:1.75, marginBottom: mobile ? 28 : 32, maxWidth:460 }}>
+              StudyFlow unifies subjects, assignments, grades, notes, calendar, Pomodoro timer, and an AI assistant — one focused workspace built for students who mean business.
             </p>
+            <div style={{ display:"flex", gap:10, flexWrap:"wrap", justifyContent: mobile ? "center" : "flex-start", marginBottom:24 }}>
+              <button style={{ background:C.indigo, color:"#fff", border:"none", borderRadius:10, padding: mobile ? "14px 28px" : "13px 28px", fontSize:15, fontWeight:700, cursor:"pointer", width: mobile ? "100%" : "auto", boxShadow:`0 10px 24px ${C.indigo}30` }} onClick={() => navigate("/register")}>
+                Start for Free →
+              </button>
+              <button style={{ background:"transparent", color:C.muted, border:`1px solid ${C.border}`, borderRadius:10, padding: mobile ? "14px 24px" : "13px 24px", fontSize:15, cursor:"pointer", width: mobile ? "100%" : "auto", fontFamily:"'Plus Jakarta Sans',sans-serif" }} onClick={() => navigate("/login")}>
+                I have an account
+              </button>
+            </div>
+            {/* proof tags */}
+            <div style={{ display:"flex", gap:7, flexWrap:"wrap", justifyContent: mobile ? "center" : "flex-start", marginBottom:14 }}>
+              {[
+                { icon: BarChart3, label: "Grades" },
+                { icon: Timer, label: "Pomodoro" },
+                { icon: Bot, label: "AI" },
+                { icon: CalendarDays, label: "Calendar" },
+              ].map(t => {
+                const TIcon = t.icon;
+                return (
+                  <span key={t.label} style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:11, color:C.indigoFg, background:`${C.indigo}12`, border:`1px solid ${C.indigo}24`, borderRadius:6, padding:"4px 9px" }}>
+                    <TIcon size={12} aria-hidden="true" /> {t.label}
+                  </span>
+                );
+              })}
+            </div>
+            {/* social proof */}
+            <div style={{ display:"flex", alignItems:"center", gap:6, justifyContent: mobile ? "center" : "flex-start" }}>
+              {[0,1,2].map(i => <span key={i} aria-hidden="true" style={{ width:7, height:7, borderRadius:"50%", background:C.emerald, boxShadow:`0 0 7px ${C.emerald}77` }} />)}
+              <span style={{ fontSize:12, color:C.muted }}>Trusted by {STUDENT_COUNT} students</span>
+            </div>
           </div>
 
-          {/* stats row */}
+          {/* visual */}
+          <div style={{
+            flex:"1 1 auto", maxWidth: mobile ? "100%" : 680, minWidth:0, position:"relative",
+            opacity: heroVis ? 1 : 0,
+            transform: heroVis
+              ? mobile ? "translateY(0)" : "perspective(1100px) rotateY(-3deg) rotateX(2deg)"
+              : mobile ? "translateY(24px)" : "perspective(1100px) rotateY(-3deg) rotateX(2deg) translateY(30px)",
+            transition:"opacity 1s ease .2s, transform 1s ease .2s",
+          }}>
+            <DashboardMock mobile={mobile} C={C} />
+            {/* floating badge — top */}
+            <div aria-hidden="true" className="badge-float" style={{
+              position:"absolute", top: mobile ? -14 : -20, right: mobile ? 8 : 16,
+              display:"flex", alignItems:"center", gap:9,
+              background:C.surface, border:`1px solid ${C.border}`,
+              borderRadius:10, padding:"9px 12px",
+              boxShadow:`0 10px 28px ${C.indigo}29`,
+            }}>
+              <Timer size={17} color={C.emerald} strokeWidth={2} />
+              <div>
+                <div style={{ fontSize:10, fontWeight:700, color:C.text }}>Focus session</div>
+                <div style={{ fontSize:9, color:C.emerald }}>25:00 remaining</div>
+              </div>
+            </div>
+            {/* floating badge — bottom */}
+            <div aria-hidden="true" className="badge-slidein" style={{
+              position:"absolute", bottom: mobile ? -14 : -18, left: mobile ? 8 : 16,
+              display:"flex", alignItems:"center", gap:9,
+              background:C.surface, border:`1px solid ${C.border}`,
+              borderRadius:10, padding:"9px 12px",
+              boxShadow:`0 10px 28px ${C.violet}29`,
+            }}>
+              <PartyPopper size={17} color={C.indigoFg} strokeWidth={2} />
+              <div>
+                <div style={{ fontSize:10, fontWeight:700, color:C.text }}>Assignment submitted!</div>
+                <div style={{ fontSize:9, color:C.indigoFg }}>Math Problem Set · just now</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── DIVIDER ── */}
+        <div style={{ position:"relative", zIndex:1, textAlign:"center", padding: mobile ? "22px 20px" : "30px 48px", borderTop:`1px solid ${C.border}`, borderBottom:`1px solid ${C.border}`, background:C.surface }}>
+          <span style={{ fontSize: mobile ? 12 : 13, color:C.muted, letterSpacing:"0.5px" }}>Everything a student needs, nothing they don't.</span>
+        </div>
+
+        {/* ── FEATURES ── */}
+        <section id="features" ref={featRef} style={{ position:"relative", zIndex:1, maxWidth:1200, margin:"0 auto", padding: mobile ? "64px 20px" : "96px 52px", scrollMarginTop:72 }}>
+          <div style={{ textAlign:"center", marginBottom: mobile ? 40 : 60 }}>
+            <p style={sectionEye(C)}>All your tools</p>
+            <h2 style={{ fontSize: mobile ? 30 : 42, fontWeight:800, letterSpacing:"-1.2px", marginBottom:12, color: C.text }}>One app. Every tool.</h2>
+            <p style={{ fontSize:14, color:C.muted, maxWidth:380, margin:"0 auto", lineHeight:1.7 }}>From planning your week to acing your exams — StudyFlow has it covered.</p>
+          </div>
           <div style={{
             display:"grid",
             gridTemplateColumns: mobile ? "1fr 1fr" : "repeat(4,1fr)",
             gap: mobile ? 10 : 14,
-            marginBottom: mobile ? 48 : 72,
           }}>
-            {STATS.map((s, i) => {
-              const SIcon = s.icon;
+            {FEATURES.map((f,i) => <FeatureCard key={f.label} feature={f} visible={featVis} delay={i * .055} C={C} />)}
+          </div>
+        </section>
+
+        {/* ── WHY US ── */}
+        <section id="whyus" ref={promoRef} style={{ position:"relative", zIndex:1, maxWidth:1100, margin:"0 auto", padding: mobile ? "0 20px 64px" : "0 52px 96px", scrollMarginTop:72 }}>
+          <div style={{ textAlign:"center", marginBottom: mobile ? 36 : 56 }}>
+            <p style={sectionEye(C)}>Why StudyFlow</p>
+            <h2 style={{ fontSize: mobile ? 30 : 42, fontWeight:800, letterSpacing:"-1.2px", marginBottom:12, color: C.text }}>Built different.</h2>
+            <p style={{ fontSize:14, color:C.muted, maxWidth:340, margin:"0 auto", lineHeight:1.7 }}>No fluff, no paywalls — the tools that actually help you study.</p>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns: mobile ? "1fr" : "repeat(3,1fr)", gap: mobile ? 12 : 18 }}>
+            {PROMOS.map((p,i) => {
+              const PIcon = p.icon;
+              const pColor = promoColor[p.color];
               return (
-                <div key={s.label} style={{
-                  background: C.surface2,
-                  border:`1px solid ${C.border}`,
-                  borderRadius:14,
-                  padding: mobile ? "20px 16px" : "28px 20px",
-                  textAlign:"center",
-                  opacity: aboutVis ? 1 : 0,
-                  transform: aboutVis ? "translateY(0)" : "translateY(20px)",
-                  transition:`opacity .5s ease ${i*.08 + .1}s, transform .5s ease ${i*.08 + .1}s`,
+                <div key={p.tag} style={{
+                  position:"relative", overflow:"hidden",
+                  background:C.surface, borderRadius:16,
+                  border:`1px solid ${promoVis ? pColor+"2e" : C.border}`,
+                  padding: mobile ? "24px 20px" : "30px 24px",
+                  display:"flex", flexDirection: mobile ? "row" : "column",
+                  alignItems: mobile ? "flex-start" : "flex-start",
+                  gap: mobile ? 16 : 14,
+                  opacity: promoVis ? 1 : 0,
+                  transform: promoVis ? "translateY(0)" : "translateY(22px)",
+                  boxShadow: `0 1px 2px ${C.shadowSoft}`,
+                  transition:`opacity .5s ease ${i*.1}s, transform .5s ease ${i*.1}s, border-color .5s ease ${i*.1}s`,
                 }}>
-                  <div style={{ marginBottom:10, display:"flex", justifyContent:"center" }}>
-                    <SIcon size={mobile ? 22 : 26} color={C.indigoFg} strokeWidth={1.8} />
+                  {/* glow */}
+                  <div aria-hidden="true" style={{ position:"absolute", inset:0, background:`radial-gradient(ellipse at top left,${pColor}0c,transparent 65%)`, pointerEvents:"none" }} />
+                  <div style={{ width:46, height:46, borderRadius:12, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", background:`${pColor}15`, border:`1px solid ${pColor}28` }}>
+                    <PIcon size={22} color={pColor} strokeWidth={1.8} aria-hidden="true" />
                   </div>
-                  <div style={{ fontSize: mobile ? 26 : 34, fontWeight:800, color:C.text, letterSpacing:"-1px", lineHeight:1 }}>{s.value}</div>
-                  <div style={{ fontSize: mobile ? 11 : 12, color:C.muted, marginTop:6, letterSpacing:"0.4px" }}>{s.label}</div>
+                  <div>
+                    <div style={{ fontSize:10, fontWeight:700, letterSpacing:"1px", textTransform:"uppercase", color:pColor, background:`${pColor}14`, border:`1px solid ${pColor}28`, borderRadius:5, padding:"3px 8px", display:"inline-block", marginBottom:8 }}>{p.tag}</div>
+                    <h3 style={{ fontSize: mobile ? 16 : 17, fontWeight:700, color:C.text, marginBottom:6 }}>{p.title}</h3>
+                    <p style={{ fontSize:13, color:C.muted, lineHeight:1.65 }}>{p.desc}</p>
+                  </div>
                 </div>
               );
             })}
           </div>
+        </section>
 
-          {/* two-column: story + values */}
-          <div style={{
-            display:"grid",
-            gridTemplateColumns: mobile ? "1fr" : "1fr 1fr",
-            gap: mobile ? 32 : 52,
-            alignItems:"start",
-          }}>
+        {/* ── ABOUT ── */}
+        <section id="about" ref={aboutRef} style={{
+          position:"relative", zIndex:1,
+          borderTop:`1px solid ${C.border}`,
+          background: C.surface,
+          padding: mobile ? "64px 20px" : "96px 52px",
+          overflow:"hidden",
+          scrollMarginTop:72,
+        }}>
+          {/* subtle background glow */}
+          <div aria-hidden="true" style={{ position:"absolute", top:"30%", right:"-10%", width:500, height:400, borderRadius:"50%", background:`radial-gradient(circle,${C.violet}0a,transparent 65%)`, pointerEvents:"none" }} />
+          <div aria-hidden="true" style={{ position:"absolute", bottom:"10%", left:"-5%", width:400, height:300, borderRadius:"50%", background:`radial-gradient(circle,${C.indigo}08,transparent 65%)`, pointerEvents:"none" }} />
 
-            {/* story */}
+          <div style={{ maxWidth:1100, margin:"0 auto", position:"relative" }}>
+
+            {/* header */}
             <div style={{
+              textAlign:"center", marginBottom: mobile ? 48 : 72,
               opacity: aboutVis ? 1 : 0,
-              transform: aboutVis ? "translateY(0)" : "translateY(22px)",
-              transition:"opacity .6s ease .25s, transform .6s ease .25s",
+              transform: aboutVis ? "translateY(0)" : "translateY(20px)",
+              transition:"opacity .6s ease, transform .6s ease",
             }}>
-              <div style={{ fontSize:10, fontWeight:700, letterSpacing:"1.5px", textTransform:"uppercase", color:C.indigoFg, marginBottom:16 }}>Our story</div>
-              <p style={{ fontSize: mobile ? 14 : 15, color:C.textSoft, lineHeight:1.85, marginBottom:20 }}>
-                It started right after the final week of class — the one where we presented our system project. That moment sparked something. After discovering Vite and React, I built my very first project: a simple to-do list.
+              <p style={sectionEye(C)}>About StudyFlow</p>
+              <h2 style={{ fontSize: mobile ? 30 : 42, fontWeight:800, letterSpacing:"-1.2px", marginBottom:16, color: C.text }}>
+                Made by a student,<br />
+                <span style={gradientText(C)}>
+                  for every student.
+                </span>
+              </h2>
+              <p style={{ fontSize: mobile ? 14 : 15, color:C.muted, maxWidth:520, margin:"0 auto", lineHeight:1.8 }}>
+                StudyFlow started as a frustration. Juggling five different apps — a planner here, a grade tracker there, sticky notes everywhere — was exhausting. So we built one thing that does it all, done right.
               </p>
-              <p style={{ fontSize: mobile ? 14 : 15, color:C.textSoft, lineHeight:1.85, marginBottom:20 }}>
-                But the more I worked on it, the more I thought — why stop at a to-do list? I wanted something I could actually use in the next school year. Something that could handle not just tasks, but everything a student juggles every day.
-              </p>
-              <p style={{ fontSize: mobile ? 14 : 15, color:C.textSoft, lineHeight:1.85 }}>
-                So I kept building. StudyFlow grew into a full academic workspace — and now I'm sharing it, hoping it helps other students stay organised, never miss a deadline, and actually enjoy managing their studies.
-              </p>
-
-              {/* inline founder tag */}
-              <div style={{
-                display:"inline-flex", alignItems:"center", gap:12,
-                marginTop:28, background:C.bg, border:`1px solid ${C.border}`,
-                borderRadius:12, padding:"12px 16px",
-              }}>
-                <div style={{ width:36, height:36, borderRadius:"50%", background:`${C.indigo}18`, border:`1px solid ${C.indigo}30`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                  <Code2 size={17} color={C.indigo} strokeWidth={1.8} />
-                </div>
-                <div>
-                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>Adrian</div>
-                  <div style={{ fontSize:11, color:C.muted }}>Founder · Student · Builder</div>
-                </div>
-              </div>
             </div>
 
-            {/* values */}
+            {/* stats row */}
             <div style={{
-              display:"flex", flexDirection:"column", gap: mobile ? 12 : 14,
-              opacity: aboutVis ? 1 : 0,
-              transform: aboutVis ? "translateY(0)" : "translateY(22px)",
-              transition:"opacity .6s ease .35s, transform .6s ease .35s",
+              display:"grid",
+              gridTemplateColumns: mobile ? "1fr 1fr" : "repeat(4,1fr)",
+              gap: mobile ? 10 : 14,
+              marginBottom: mobile ? 48 : 72,
             }}>
-              <div style={{ fontSize:10, fontWeight:700, letterSpacing:"1.5px", textTransform:"uppercase", color:C.indigoFg, marginBottom:4 }}>What we stand for</div>
-              {TEAM_VALUES.map((v, i) => {
-                const VIcon = v.icon;
+              {STATS.map((s, i) => {
+                const SIcon = s.icon;
                 return (
-                  <div key={v.title} style={{
-                    display:"flex", gap:16, alignItems:"flex-start",
+                  <div key={s.label} style={{
                     background: C.surface2,
                     border:`1px solid ${C.border}`,
                     borderRadius:14,
-                    padding: mobile ? "18px 16px" : "20px 18px",
+                    padding: mobile ? "20px 16px" : "28px 20px",
+                    textAlign:"center",
                     opacity: aboutVis ? 1 : 0,
-                    transform: aboutVis ? "translateY(0)" : "translateY(16px)",
-                    transition:`opacity .5s ease ${i*.1 + .4}s, transform .5s ease ${i*.1 + .4}s`,
+                    transform: aboutVis ? "translateY(0)" : "translateY(20px)",
+                    transition:`opacity .5s ease ${i*.08 + .1}s, transform .5s ease ${i*.08 + .1}s`,
                   }}>
-                    <div style={{ flexShrink:0, marginTop:2 }}>
-                      <VIcon size={20} color={C.indigoFg} strokeWidth={1.8} />
+                    <div style={{ marginBottom:10, display:"flex", justifyContent:"center" }}>
+                      <SIcon size={mobile ? 22 : 26} color={C.indigoFg} strokeWidth={1.8} aria-hidden="true" />
                     </div>
-                    <div>
-                      <div style={{ fontSize: mobile ? 13 : 14, fontWeight:700, color:C.text, marginBottom:6 }}>{v.title}</div>
-                      <div style={{ fontSize: mobile ? 12 : 13, color:C.muted, lineHeight:1.65 }}>{v.desc}</div>
-                    </div>
+                    <div style={{ fontSize: mobile ? 26 : 34, fontWeight:800, color:C.text, letterSpacing:"-1px", lineHeight:1 }}>{s.value}</div>
+                    <div style={{ fontSize: mobile ? 11 : 12, color:C.muted, marginTop:6, letterSpacing:"0.4px" }}>{s.label}</div>
                   </div>
                 );
               })}
             </div>
-          </div>
 
-        </div>
-      </section>
+            {/* two-column: story + values */}
+            <div style={{
+              display:"grid",
+              gridTemplateColumns: mobile ? "1fr" : "1fr 1fr",
+              gap: mobile ? 32 : 52,
+              alignItems:"start",
+            }}>
 
-      {/* ── CTA ── */}
-      <section ref={ctaRef} style={{
-        position:"relative", zIndex:1, textAlign:"center",
-        padding: mobile ? "72px 24px" : "110px 52px",
-        background:`linear-gradient(180deg,${C.bg} 0%,${C.surface2} 50%,${C.bg} 100%)`,
-        overflow:"hidden",
-      }}>
-        <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", width: mobile?400:800, height:280, pointerEvents:"none", background:`radial-gradient(ellipse,${C.indigo}1c,transparent 65%)` }} />
-        <div style={{ position:"relative", opacity: ctaVis?1:0, transform: ctaVis?"translateY(0)":"translateY(18px)", transition:"opacity .7s ease, transform .7s ease" }}>
-          <div style={eyebrow(C)}><Sparkles size={11} /> Free to use</div>
-          <h2 style={{ fontSize: mobile ? 28 : 46, fontWeight:800, letterSpacing:"-1.5px", margin: mobile ? "16px 0 12px" : "20px 0 14px", color: C.text }}>
-            Ready to take control<br />of your studies?
-          </h2>
-          <p style={{ fontSize: mobile ? 14 : 15, color:C.muted, maxWidth:380, margin:"0 auto 28px" }}>
-            Create your free account and get started in under a minute.
-          </p>
-          <div style={{ display:"flex", gap:10, justifyContent:"center", flexDirection: mobile ? "column" : "row", alignItems:"center", maxWidth: mobile ? 320 : "none", margin:"0 auto" }}>
-            <button style={{ background:C.indigo, color:"#fff", border:"none", borderRadius:10, padding: mobile ? "15px 32px" : "14px 36px", fontSize: mobile ? 15 : 16, fontWeight:700, cursor:"pointer", width: mobile ? "100%" : "auto", fontFamily:"'Plus Jakarta Sans',sans-serif", boxShadow:`0 10px 24px ${C.indigo}30` }} onClick={() => navigate("/register")}>
-              Create Free Account →
-            </button>
-            <button style={{ background:"transparent", color:C.muted, border:`1px solid ${C.border}`, borderRadius:10, padding: mobile ? "15px 32px" : "14px 28px", fontSize: mobile ? 15 : 16, cursor:"pointer", width: mobile ? "100%" : "auto", fontFamily:"'Plus Jakarta Sans',sans-serif" }} onClick={() => navigate("/login")}>
-              Sign In
-            </button>
+              {/* story */}
+              <div style={{
+                opacity: aboutVis ? 1 : 0,
+                transform: aboutVis ? "translateY(0)" : "translateY(22px)",
+                transition:"opacity .6s ease .25s, transform .6s ease .25s",
+              }}>
+                <div style={{ fontSize:10, fontWeight:700, letterSpacing:"1.5px", textTransform:"uppercase", color:C.indigoFg, marginBottom:16 }}>Our story</div>
+                <p style={{ fontSize: mobile ? 14 : 15, color:C.textSoft, lineHeight:1.85, marginBottom:20 }}>
+                  It started right after the final week of class — the one where we presented our system project. That moment sparked something. After discovering Vite and React, I built my very first project: a simple to-do list.
+                </p>
+                <p style={{ fontSize: mobile ? 14 : 15, color:C.textSoft, lineHeight:1.85, marginBottom:20 }}>
+                  But the more I worked on it, the more I thought — why stop at a to-do list? I wanted something I could actually use in the next school year. Something that could handle not just tasks, but everything a student juggles every day.
+                </p>
+                <p style={{ fontSize: mobile ? 14 : 15, color:C.textSoft, lineHeight:1.85 }}>
+                  So I kept building. StudyFlow grew into a full academic workspace — and now I'm sharing it, hoping it helps other students stay organised, never miss a deadline, and actually enjoy managing their studies.
+                </p>
+
+                {/* inline founder tag */}
+                <div style={{
+                  display:"inline-flex", alignItems:"center", gap:12,
+                  marginTop:28, background:C.bg, border:`1px solid ${C.border}`,
+                  borderRadius:12, padding:"12px 16px",
+                }}>
+                  <div style={{ width:36, height:36, borderRadius:"50%", background:`${C.indigo}18`, border:`1px solid ${C.indigo}30`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    <Code2 size={17} color={C.indigo} strokeWidth={1.8} aria-hidden="true" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.text }}>Adrian</div>
+                    <div style={{ fontSize:11, color:C.muted }}>Founder · Student · Builder</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* values */}
+              <div style={{
+                display:"flex", flexDirection:"column", gap: mobile ? 12 : 14,
+                opacity: aboutVis ? 1 : 0,
+                transform: aboutVis ? "translateY(0)" : "translateY(22px)",
+                transition:"opacity .6s ease .35s, transform .6s ease .35s",
+              }}>
+                <div style={{ fontSize:10, fontWeight:700, letterSpacing:"1.5px", textTransform:"uppercase", color:C.indigoFg, marginBottom:4 }}>What we stand for</div>
+                {TEAM_VALUES.map((v, i) => {
+                  const VIcon = v.icon;
+                  return (
+                    <div key={v.title} style={{
+                      display:"flex", gap:16, alignItems:"flex-start",
+                      background: C.surface2,
+                      border:`1px solid ${C.border}`,
+                      borderRadius:14,
+                      padding: mobile ? "18px 16px" : "20px 18px",
+                      opacity: aboutVis ? 1 : 0,
+                      transform: aboutVis ? "translateY(0)" : "translateY(16px)",
+                      transition:`opacity .5s ease ${i*.1 + .4}s, transform .5s ease ${i*.1 + .4}s`,
+                    }}>
+                      <div style={{ flexShrink:0, marginTop:2 }}>
+                        <VIcon size={20} color={C.indigoFg} strokeWidth={1.8} aria-hidden="true" />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: mobile ? 13 : 14, fontWeight:700, color:C.text, marginBottom:6 }}>{v.title}</div>
+                        <div style={{ fontSize: mobile ? 12 : 13, color:C.muted, lineHeight:1.65 }}>{v.desc}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
           </div>
-        </div>
-      </section>
+        </section>
+
+        {/* ── CTA ── */}
+        <section ref={ctaRef} style={{
+          position:"relative", zIndex:1, textAlign:"center",
+          padding: mobile ? "72px 24px" : "110px 52px",
+          background:`linear-gradient(180deg,${C.bg} 0%,${C.surface2} 50%,${C.bg} 100%)`,
+          overflow:"hidden",
+        }}>
+          <div aria-hidden="true" style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", width: mobile?400:800, height:280, pointerEvents:"none", background:`radial-gradient(ellipse,${C.indigo}1c,transparent 65%)` }} />
+          <div style={{ position:"relative", opacity: ctaVis?1:0, transform: ctaVis?"translateY(0)":"translateY(18px)", transition:"opacity .7s ease, transform .7s ease" }}>
+            <div style={eyebrow(C)}><Sparkles size={11} aria-hidden="true" /> Free to use</div>
+            <h2 style={{ fontSize: mobile ? 28 : 46, fontWeight:800, letterSpacing:"-1.5px", margin: mobile ? "16px 0 12px" : "20px 0 14px", color: C.text }}>
+              Ready to take control<br />of your studies?
+            </h2>
+            <p style={{ fontSize: mobile ? 14 : 15, color:C.muted, maxWidth:380, margin:"0 auto 28px" }}>
+              Create your free account and get started in under a minute.
+            </p>
+            <div style={{ display:"flex", gap:10, justifyContent:"center", flexDirection: mobile ? "column" : "row", alignItems:"center", maxWidth: mobile ? 320 : "none", margin:"0 auto" }}>
+              <button style={{ background:C.indigo, color:"#fff", border:"none", borderRadius:10, padding: mobile ? "15px 32px" : "14px 36px", fontSize: mobile ? 15 : 16, fontWeight:700, cursor:"pointer", width: mobile ? "100%" : "auto", fontFamily:"'Plus Jakarta Sans',sans-serif", boxShadow:`0 10px 24px ${C.indigo}30` }} onClick={() => navigate("/register")}>
+                Create Free Account →
+              </button>
+              <button style={{ background:"transparent", color:C.muted, border:`1px solid ${C.border}`, borderRadius:10, padding: mobile ? "15px 32px" : "14px 28px", fontSize: mobile ? 15 : 16, cursor:"pointer", width: mobile ? "100%" : "auto", fontFamily:"'Plus Jakarta Sans',sans-serif" }} onClick={() => navigate("/login")}>
+                Sign In
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
 
       {/* ── FOOTER ── */}
       <footer style={{
@@ -761,6 +847,9 @@ export default function Home() {
         ::-webkit-scrollbar-thumb { background: ${C.indigo}44; border-radius: 4px; }
         button { font-family: 'Plus Jakarta Sans', sans-serif; }
 
+        /* Keyboard focus ring (inline styles can't express :focus-visible) */
+        button:focus-visible { outline: 2px solid ${C.indigo}; outline-offset: 2px; }
+
         @keyframes badgeFloat {
           0%,100% { transform: translateY(0); }
           50% { transform: translateY(-5px); }
@@ -771,6 +860,17 @@ export default function Home() {
         }
         .badge-float  { animation: badgeFloat 3.2s ease-in-out infinite; }
         .badge-slidein { animation: badgeSlide 0.65s ease 1s both; }
+
+        /* Respect "reduce motion": no looping float, no slides/fades */
+        @media (prefers-reduced-motion: reduce) {
+          html { scroll-behavior: auto; }
+          *, *::before, *::after {
+            animation-duration: .01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: .01ms !important;
+            transition-delay: 0s !important;
+          }
+        }
       `}</style>
     </div>
   );
@@ -780,6 +880,11 @@ export default function Home() {
 const navBtn = (C) => ({
   background: "none", border: "none", cursor: "pointer",
   fontSize: 13, color: C.muted, fontFamily: "'Plus Jakarta Sans',sans-serif",
+});
+const themeToggle = (C, size) => ({
+  background: "none", border: `1px solid ${C.border}`, borderRadius: 8,
+  width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center",
+  cursor: "pointer", color: C.muted, transition: "border-color .2s, color .2s",
 });
 const eyebrow = (C) => ({
   display: "inline-flex", alignItems: "center", gap: 6,

@@ -68,6 +68,12 @@ const QUICK_ACTIONS = [
 const ANNOUNCEMENT_VISIBLE_DAYS = 2
 const ANNOUNCEMENT_VISIBLE_MS = ANNOUNCEMENT_VISIBLE_DAYS * 24 * 60 * 60 * 1000
 
+// localStorage key that remembers which sign-in we've already shown the
+// "Welcome back" greeting for. We store Supabase's `last_sign_in_at` value —
+// it only changes on a real login (not on refresh / token refresh), so a
+// different value than the stored one means "this is a brand-new login".
+const WELCOME_SEEN_KEY = 'studyflow:welcomeSeenForSignIn'
+
 // Fallback swatch used when a subject's stored `color` isn't the expected
 // { name, bg, light, border, text } object (e.g. legacy/malformed rows).
 const DEFAULT_SUBJECT_COLOR = { name: 'indigo', bg: 'bg-indigo-500', light: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400' }
@@ -159,12 +165,36 @@ export default function DashboardHome() {
   const [completingId, setCompletingId]   = useState(null)
   const [completingReminderId, setCompletingReminderId] = useState(null)
 
+  // True only on the first dashboard visit after a fresh login. Once set it
+  // stays true for the lifetime of this component (so the greeting doesn't
+  // flip to "Good morning" mid-view), but the next mount / refresh will see
+  // the stored sign-in timestamp and greet normally.
+  const [isWelcomeBack, setIsWelcomeBack] = useState(false)
+
   // Fix: use a ref to track mount state — prevents setState on unmounted component
   const isMounted = useRef(true)
   useEffect(() => {
     isMounted.current = true
     return () => { isMounted.current = false }
   }, [])
+
+  // Detect a brand-new login by comparing Supabase's `last_sign_in_at` against
+  // the one we last greeted. Different (or never seen) => fresh login => show
+  // "Welcome back" and remember it so we don't show it again for this session.
+  const lastSignInAt = user?.last_sign_in_at
+  useEffect(() => {
+    if (!lastSignInAt) return
+    try {
+      const seen = localStorage.getItem(WELCOME_SEEN_KEY)
+      if (seen !== lastSignInAt) {
+        setIsWelcomeBack(true)
+        localStorage.setItem(WELCOME_SEEN_KEY, lastSignInAt)
+      }
+    } catch {
+      // localStorage can throw (private mode, blocked storage) — just skip
+      // the welcome greeting and fall back to the normal time-based one.
+    }
+  }, [lastSignInAt])
 
   // Fix: store as a millisecond timestamp (primitive number) so useMemo dep comparisons
   // are stable — a new Date() object would never be strictly equal to the previous one,
@@ -457,7 +487,9 @@ export default function DashboardHome() {
         <div className="flex items-start justify-between" style={fadeUp(0)}>
           <div>
             <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
-              Good {getGreeting()}, {firstName}
+              {isWelcomeBack
+                ? <>Welcome back, {firstName}</>
+                : <>Good {getGreeting()}, {firstName}</>}
               <Sparkles aria-hidden="true" size={22} className="text-amber-500" />
             </h2>
             <p className="text-gray-500 dark:text-gray-400 mt-1.5 text-sm">
